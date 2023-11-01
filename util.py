@@ -256,27 +256,6 @@ def setup_9_quads():
     return x0, xf
 
 
-def generate_f(x_dims_local):
-    g = 9.8
-    # NOTE: Assume homogeneity of agents.
-    n_agents = len(x_dims_local)
-    n_states = x_dims_local[0]
-    n_controls = 3
-    
-    def f(x, u):
-        x_dot = cs.MX.zeros(x.numel())
-        for i_agent in range(n_agents):
-            i_xstart = i_agent * n_states
-            i_ustart = i_agent * n_controls
-            x_dot[i_xstart:i_xstart + n_states] = cs.vertcat(
-                x[i_xstart + 3: i_xstart + 6],
-                g*cs.tan(u[i_ustart]), -g*cs.tan(u[i_ustart+1]), u[i_ustart+2] - g
-                )
-            
-        return x_dot
-    
-    return f
-
 def objective(X, U, u_ref, xf, Q, R, Qf):
     total_stage_cost = 0
     for j in range(X.shape[1] - 1):
@@ -294,48 +273,6 @@ def objective(X, U, u_ref, xf, Q, R, Qf):
         total_terminal_cost += (X[i, -1] - xf[i]) * Qf[i, i] * (X[i, -1] - xf[i])
 
     return total_stage_cost + total_terminal_cost
-
-def generate_min_max_input(inputs_dict, n_inputs,theta_max,
-                          theta_min,tau_max,tau_min,phi_max,phi_min,human_count = None):
-
-    n_agents = [u.shape[0] // n_inputs for u in inputs_dict.values()]
-
-    u_min = np.array([[theta_min, phi_min, tau_min]])
-    u_max = np.array([[theta_max, phi_max, tau_max]])
-    
-    if human_count:
-        return [
-        (np.tile(u_min, n_agents_i), np.tile(u_max, n_agents_i))
-        for n_agents_i in (n_agents-human_count)
-        ]
-    
-    else:
-        return [
-            (np.tile(u_min, n_agents_i), np.tile(u_max, n_agents_i))
-            for n_agents_i in n_agents
-        ]
-
-
-def generate_min_max_state(states_dict, n_states, x_min,
-                          x_max,y_min,y_max,z_min,z_max,v_min,v_max,human_count = None):
-
-    n_agents = [x.shape[0] // n_states for x in states_dict.values()]
-    x_min = np.array([[x_min, y_min, z_min, v_min, v_min, v_min]])
-    x_max = np.array([[x_max, y_max, z_max, v_max, v_max, v_max]])
-    
-    if human_count:
-        return [
-        (np.tile(x_min, n_agents_i), np.tile(x_max, n_agents_i))
-        for n_agents_i in (n_agents-human_count)
-        ]
-    
-    else:
-        
-        return [
-            (np.tile(x_min, n_agents_i), np.tile(x_max, n_agents_i))
-            for n_agents_i in n_agents
-        ]
-
 
 def distance_to_goal(x,xf,n_agents,n_states):
     n_d = 3 
