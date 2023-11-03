@@ -117,7 +117,7 @@ def solve_distributed_rhc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, 
         
         distributed_mpc_iters += 1
         
-        if distributed_mpc_iters > 35:
+        if distributed_mpc_iters > 50:
             print(f'Max iters reached; exiting MPC loops')
             converged = False
             break
@@ -138,6 +138,80 @@ def solve_distributed_rhc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, 
         )
     
     return X_full, U_full, obj_trj, np.mean(solve_times_mean), obj_history
+
+
+
+
+# def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_trial=None):
+#     SOVA_admm = False
+#     nx = n_states*n_agents
+#     nu = n_inputs*n_agents
+#     X_full = np.zeros((0, nx))
+#     U_full = np.zeros((0, nu))
+#     X_full = np.r_[X_full, x0.reshape(1,-1)]
+#     u_ref = np.array([0, 0, 0]*n_agents)
+#     # u_ref = np.array([0, 0, 9.8]*n_agents)
+    
+#     x_curr = x0
+#     mpc_iter = 0
+#     obj_history = [np.inf]
+#     solve_times = []
+#     t = 0
+#     dt = 0.1
+
+#     while not np.all(dpilqr.distance_to_goal(x_curr.flatten(), xr.flatten(), n_agents, n_states, 3) <= 0.1):
+        
+#         try:
+#             x_trj_converged, u_trj_converged, _, admm_time = solve_consensus(n_states, n_inputs, n_agents, x_curr, \
+#                                                                  xr, T, radius, Q, R, Qf, MAX_ITER)
+            
+#             solve_times.append(admm_time)
+            
+#         except EOFError or RuntimeError:
+#             admm_time = np.inf
+#             solve_times.append(admm_time)
+#             print('Error encountered in solve_iteration!! Exiting...')
+#             converged = False
+#             obj_trj = np.inf
+#             logging.info(
+#             f'{n_trial},'
+#             f'{n_agents},{t},{converged},'
+#             f'{obj_trj},{T},{dt},{radius},{SOVA_admm},{np.mean(solve_times)},{np.std(solve_times)}, {MAX_ITER},'
+#             f'{dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)},'
+#             )
+#             return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
+            
+#         obj_history.append(float(util.objective(x_trj_converged.T, u_trj_converged.T, u_ref, xr, Q, R, Qf)))
+        
+#         x_curr = x_trj_converged[1]
+#         u_curr = u_trj_converged[0]
+        
+#         X_full = np.r_[X_full, x_curr.reshape(1,-1)]
+#         U_full = np.r_[U_full, u_curr.reshape(1,-1)]
+        
+#         mpc_iter += 1
+#         t += dt
+#         if mpc_iter > 35:
+#             print('Max MPC iters reached!Exiting MPC loops...')
+#             converged = False
+#             break
+
+#     print(f'Final distance to goal is {dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)}')
+    
+#     if np.all(dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3) <= 0.1):
+#         converged = True
+
+#     obj_trj = float(util.objective(X_full.T, U_full.T, u_ref, xr, Q, R, Qf))
+    
+#     logging.info(
+#     f'{n_trial},'
+#     f'{n_agents},{t},{converged},'
+#     f'{obj_trj},{T},{dt},{radius},{SOVA_admm},{np.mean(solve_times)},{np.std(solve_times)}, {MAX_ITER},'
+#     f'{dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)},'
+#     )
+    
+    
+#     return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
 
 
 convex_problem = True
@@ -179,23 +253,25 @@ def solve_consensus(n_states, n_inputs, n_agents,
         states["Y_{0}".format(id)] = d[f"opti_{id}"].variable((T+1)*nx + T* nu)
         cost = 0
 
-        # Quadratic tracking cost:
-        # Can alsl use the "quad_form" function; 
-        # (I'm explicitly summing over individual elements to make it more straightforward)
+        #Quadratic tracking cost:
         for t in range(T):
             for idx in range(nx):
-                cost += (states[f"Y_{id}"][:(T+1)*nx][t*nx:(t+1)*nx][idx] - xr[idx]) *  \
-                Q[idx,idx]* (states[f"Y_{id}"][:(T+1)*nx][t*nx:(t+1)*nx][idx] - xr[idx]) 
+                state_curr = states[f"Y_{id}"][:(T+1)*nx][t*nx:(t+1)*nx][idx]
+                state_ref = xr[idx]
+                cost += (state_curr - state_ref) * \
+                            Q[idx,idx] * \
+                            (state_curr - state_ref) 
             for idu in range(nu):
-                cost += (states[f"Y_{id}"][(T+1)*nx:][t*nu:(t+1)*nu][idu] - u_ref[idu]) *  \
-                R[idu,idu] * (states[f"Y_{id}"][(T+1)*nx:][t*nu:(t+1)*nu][idu] - u_ref[idu])
+                cost += (states[f"Y_{id}"][(T+1)*nx:][t*nu:(t+1)*nu][idu]) *  \
+                            R[idu,idu] * \
+                            (states[f"Y_{id}"][(T+1)*nx:][t*nu:(t+1)*nu][idu])
         
         #Quadratic terminal cost:
         for idf in range(nx):
             cost += (states[f"Y_{id}"][:(T+1)*nx][T*nx:(T+1)*nx][idf] - xr[idf]) * \
-            Qf[idf,idf] * (states[f"Y_{id}"][:(T+1)*nx][T*nx:(T+1)*nx][idf] - xr[idf])
+                    Qf[idf,idf] * \
+                    (states[f"Y_{id}"][:(T+1)*nx][T*nx:(T+1)*nx][idf] - xr[idf])
 
-        # f_list.append(cost)
         f_list["cost_{0}".format(id)] = cost
         
 
@@ -209,7 +285,7 @@ def solve_consensus(n_states, n_inputs, n_agents,
         d[f"opti_{agent_id}"].set_value(u, cs.GenDM_zeros((T+1)*nx + T*nu,1))
 
         # rho = 1.0
-        rho = 0.5
+        rho = 0.1
         cost += (rho/2)*sumsqr(states[f"Y_{agent_id}"] - xbar + u)
         dt = 0.1
         Ad, Bd = linear_kinodynamics(dt,N)
@@ -217,8 +293,6 @@ def solve_consensus(n_states, n_inputs, n_agents,
         iter = 0
         while True:
             try:
-
-                smooth_trj_cost = 0
                 for k in range(T):
                     X_next = states[f"Y_{agent_id}"][:(T+1)*nx][(k+1)*nx:(k+2)*nx]
                     X_curr = states[f"Y_{agent_id}"][:(T+1)*nx][k*nx:(k+1)*nx]
@@ -229,8 +303,8 @@ def solve_consensus(n_states, n_inputs, n_agents,
                 
                     d[f"opti_{agent_id}"].subject_to(X_next==Ad @ X_curr + Bd @ U_curr) # close the gaps
                     
-                    d[f"opti_{agent_id}"].subject_to(U_curr <= np.tile(np.array([np.pi/6, np.pi/6, 20]),(N,)).reshape(-1,1))
-                    d[f"opti_{agent_id}"].subject_to(np.tile(np.array([-np.pi/6, -np.pi/6, 0]),(N,)).reshape(-1,1) <= U_curr)
+                    d[f"opti_{agent_id}"].subject_to(U_curr <= np.tile(np.array([2, 2, 2]),(N,)).reshape(-1,1))
+                    d[f"opti_{agent_id}"].subject_to(np.tile(np.array([-2, -2, -2]),(N,)).reshape(-1,1) <= U_curr)
 
                     #Collision avoidance via Bufferd Voronoi Cells
                     """Reference: https://ieeexplore.ieee.org/document/7828016"""
@@ -245,18 +319,13 @@ def solve_consensus(n_states, n_inputs, n_agents,
                                     bvc_i = p_ij.T @ p_i_next - (p_ij.T @ (p_i_prev + p_j_prev)/2 + \
                                                                 r_min*cs.norm_2(p_i_prev-p_j_prev))
                                     d[f"opti_{agent_id}"].subject_to(bvc_i <= 0)
-                                    
-                    #Trajectory smoothing term (optional)
-                    # for ind in range(nx):
-                    #     smooth_trj_cost += (states[f"Y_{agent_id}"][:(T+1)*nx][(k+1)*nx:(k+2)*nx][ind]-\
-                    #                         states[f"Y_{agent_id}"][:(T+1)*nx][k*nx:(k+1)*nx][ind])**2
-                    
+                # Terminal velocity constraint?
+                # for i in range(N):
+                #     d[f"opti_{agent_id}"].subject_to(states[f"Y_{agent_id}"][:(T+1)*nx][T*nx:(T+1)*nx][i*n_states:(i+1)*n_states][3:6]== np.zeros(3).reshape(-1,1))
+                
                 X0 = d[f"opti_{agent_id}"].parameter(x0.shape[0],1)
- 
                 d[f"opti_{agent_id}"].subject_to(states[f"Y_{agent_id}"][0:nx] == X0)
-                
                 cost_tot = cost 
-                
                 d[f"opti_{agent_id}"].minimize(cost_tot)
                 
                 if convex_problem:
