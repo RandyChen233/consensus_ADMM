@@ -21,7 +21,7 @@ from multiprocessing import Process, Pipe
 opts = {'error_on_fail':False}
 
 
-def solve_distributed_rhc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, ADMM_ITER, n_trial=None):
+def solve_distributed_rhc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, ADMM_ITER, convex_problem = True, n_trial=None):
     
     n_dims = [3]*n_agents
     u_ref = np.array([0, 0, 0]*n_agents)
@@ -78,7 +78,8 @@ def solve_distributed_rhc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, 
                                                                         Q[:x_curr_i.size,:x_curr_i.size], \
                                                                         R[:u_ref_i.size,:u_ref_i.size], \
                                                                         Qf[:x_curr_i.size,:x_curr_i.size], \
-                                                                        ADMM_ITER)
+                                                                        ADMM_ITER,
+                                                                        convex_problem)
                 solve_times_per_problem.append(iter_time_i)
                 
             except EOFError or RuntimeError:
@@ -214,21 +215,18 @@ def solve_distributed_rhc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, 
 #     return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
 
 
-convex_problem = True
-
 def solve_consensus(n_states, n_inputs, n_agents, 
                     x0, xr, T, radius, Q, R, Qf, 
-                    ADMM_ITER = 10):
+                    ADMM_ITER = 10, convex_problem=True):
     """Define constants"""
     #pos_neighbors: positions of neighboring agents computed at the previous time step 
     
     nx = n_states*n_agents
     nu = n_inputs*n_agents
     N = n_agents
-
-    u_ref = np.array([0, 0, 0]*N).reshape(-1,1)
-    
-    r_min = 1.5*radius
+    x_dims = [n_states]*n_agents
+    n_dims = [3]*n_agents
+    r_min = 1.8*radius
     
     """Creating empty dicts to hold Casadi variables for each sub-problem
     Note: our ADMM algorithm is still synchronous within each sub-problem, but since
@@ -238,10 +236,8 @@ def solve_consensus(n_states, n_inputs, n_agents,
     f_list = {}
     d = {} 
     states = {}
-    dt = 0.1
     for id in range(N):
-        #Initialize Opti() class
-        
+        #Initialize Opti() class:
         if convex_problem:
         
             d["opti_{0}".format(id)] = Opti('conic')
@@ -306,19 +302,27 @@ def solve_consensus(n_states, n_inputs, n_agents,
                     d[f"opti_{agent_id}"].subject_to(U_curr <= np.tile(np.array([2, 2, 2]),(N,)).reshape(-1,1))
                     d[f"opti_{agent_id}"].subject_to(np.tile(np.array([-2, -2, -2]),(N,)).reshape(-1,1) <= U_curr)
 
-                    #Collision avoidance via Bufferd Voronoi Cells
-                    """Reference: https://ieeexplore.ieee.org/document/7828016"""
-                    if N > 1:
-                        for i in range(N):
-                            p_i_next =  X_next[:3]
-                            p_i_prev = x0[i*n_states:(i+1)*n_states][:3]
-                            for j in range(N):
-                                if j!= i:
-                                    p_j_prev = x0[j*n_states:(j+1)*n_states][:3]
-                                    p_ij = p_j_prev - p_i_prev
-                                    bvc_i = p_ij.T @ p_i_next - (p_ij.T @ (p_i_prev + p_j_prev)/2 + \
-                                                                r_min*cs.norm_2(p_i_prev-p_j_prev))
-                                    d[f"opti_{agent_id}"].subject_to(bvc_i <= 0)
+                    if convex_problem:
+                        #Collision avoidance via Bufferd Voronoi Cells
+                        """Reference: https://ieeexplore.ieee.org/document/7828016"""
+                        if N > 1:
+                            for i in range(N):
+                                p_i_next =  X_next[:3]
+                                p_i_prev = x0[i*n_states:(i+1)*n_states][:3]
+                                for j in range(N):
+                                    if j!= i:
+                                        p_j_prev = x0[j*n_states:(j+1)*n_states][:3]
+                                        p_ij = p_j_prev - p_i_prev
+                                        bvc_i = p_ij.T @ p_i_next - (p_ij.T @ (p_i_prev + p_j_prev)/2 + \
+                                                                    r_min*cs.norm_2(p_i_prev-p_j_prev))
+                                        d[f"opti_{agent_id}"].subject_to(bvc_i <= 0)
+                    else:
+                        if N > 1:
+                            distances = util.compute_pairwise_distance_nd_Sym(states[f"Y_{agent_id}"][:(T+1)*nx][k*nx:(k+1)*nx], x_dims, n_dims)
+                            # Collision avoidance constraint
+                            for dist in distances:
+                               d[f"opti_{agent_id}"].subject_to(dist >= r_min) 
+                            
                 # Terminal velocity constraint?
                 # for i in range(N):
                 #     d[f"opti_{agent_id}"].subject_to(states[f"Y_{agent_id}"][:(T+1)*nx][T*nx:(T+1)*nx][i*n_states:(i+1)*n_states][3:6]== np.zeros(3).reshape(-1,1))

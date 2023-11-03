@@ -21,7 +21,7 @@ from admm_mpc import *
 
 
 if __name__ == "__main__":
-    
+    convex_problem = True
     x0,xr = util.setup_3_quads()
     T = 15
     radius = 0.4
@@ -37,14 +37,26 @@ if __name__ == "__main__":
     Qf = Q*100
     ADMM_ITER = 10
     
+    
+    """Run convex version first:"""
     X_full, U_full, obj_trj, mean_time, obj_history = solve_distributed_rhc(ids, n_states, \
                                                                             n_inputs, n_agents, \
                                                                             x0, xr, T, radius, \
                                                                             Q, R, Qf, ADMM_ITER, \
+                                                                            convex_problem=True,
                                                                             n_trial=None)
     
-    # X_full, U_full, obj_trj ,_,_ = solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, ADMM_ITER)
-    
-    
-
     np.savez("ADMM_BVC_convex_{}.npz".format(n_agents), X_full=X_full, obj_trj=obj_trj, xr=xr)
+    
+    
+    """Run non-convex version"""
+    X_full_nonConvex, U_full_nonConvex, \
+    obj_trj_nonConvex, mean_time_nonConvex, \
+    obj_history_nonConvex = solve_distributed_rhc(ids, n_states, \
+                                                n_inputs, n_agents, \
+                                                x0, xr, T, radius, \
+                                                Q, R, Qf, ADMM_ITER, \
+                                                convex_problem=False,
+                                                n_trial=None)
+    
+    np.savez("ADMM_BVC_nonconvex_{}.npz".format(n_agents), X_full=X_full, obj_trj=obj_trj, xr=xr)
