@@ -218,6 +218,7 @@ def solve_distributed_rhc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, 
 def solve_consensus(n_states, n_inputs, n_agents, 
                     x0, xr, T, radius, Q, R, Qf, 
                     ADMM_ITER = 10, convex_problem=True):
+    
     """Define constants"""
     #pos_neighbors: positions of neighboring agents computed at the previous time step 
     
@@ -226,8 +227,8 @@ def solve_consensus(n_states, n_inputs, n_agents,
     N = n_agents
     x_dims = [n_states]*n_agents
     n_dims = [3]*n_agents
-    r_min = 1.8*radius
-    
+    r_min = 2*radius
+        
     """Creating empty dicts to hold Casadi variables for each sub-problem
     Note: our ADMM algorithm is still synchronous within each sub-problem, but since
     each sub-problem has different sizes at each time step t, we choose to iterate over each
@@ -345,7 +346,7 @@ def solve_consensus(n_states, n_inputs, n_agents,
                 
                 d[f"opti_{agent_id}"].set_value(X0,x0)
                 sol = d[f"opti_{agent_id}"].solve()
-                
+          
                 #Checking sparsity of constraint jacobian:
                 #plt.spy(sol.value(jacobian(d[f"opti_{agent_id}"].g,d[f"opti_{agent_id}"].x)))
                 #plt.show()

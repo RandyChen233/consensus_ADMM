@@ -203,6 +203,21 @@ def setup_5_quads():
     
     return x0,xf
 
+def four_quad_exchange():
+    x0 = np.array([[0.0, 1.5, 1.2, 0, 0, 0,
+                    1.5, 0.0, 1.2, 0, 0, 0,
+                    -1.5, 0.0, 1.2, 0, 0, 0,
+                    0.0 ,-1.5, 1.2, 0, 0, 0]], 
+                     dtype=float).T
+    
+    xf = np.array([[0.0, -1.5, 1.2, 0, 0, 0,
+                    -1.5, 0.0, 1.2, 0, 0, 0,
+                    1.5, 0.0, 1.2, 0, 0, 0,
+                    0.0 ,1.5, 1.2, 0, 0, 0]], 
+                     dtype=float).T
+
+    return x0, xf
+
 def setup_6_quads():
 
     x0,xf = random_setup(6,6,n_d=3,energy=6,var=3.0)
