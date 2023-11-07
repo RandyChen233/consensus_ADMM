@@ -307,7 +307,7 @@ def solve_consensus(n_states, n_inputs, n_agents,
                         """Reference: https://ieeexplore.ieee.org/document/7828016"""
                         if N > 1:
                             for i in range(N):
-                                p_i_next =  X_next[:3]
+                                p_i_next =  X_next[i*n_states:(i+1)*n_states][:3]
                                 p_i_prev = x0[i*n_states:(i+1)*n_states][:3]
                                 for j in range(N):
                                     if j!= i:
@@ -336,16 +336,20 @@ def solve_consensus(n_states, n_inputs, n_agents,
                 d[f"opti_{agent_id}"].minimize(cost_tot)
                 
                 if convex_problem:
-                    d[f"opti_{agent_id}"].solver("osqp") #Our problem is convex
+                    d[f"opti_{agent_id}"].solver("osqp",opts) #Our problem is convex
                 else:
-                    d[f"opti_{agent_id}"].solver("ipopt")
+                    d[f"opti_{agent_id}"].solver("ipopt",opts)
                 
                 if iter > 0:
                     d[f"opti_{agent_id}"].set_initial(sol_prev.value_variables())
                 
                 d[f"opti_{agent_id}"].set_value(X0,x0)
                 sol = d[f"opti_{agent_id}"].solve()
-      
+                
+                #Checking sparsity of constraint jacobian:
+                #plt.spy(sol.value(jacobian(d[f"opti_{agent_id}"].g,d[f"opti_{agent_id}"].x)))
+                #plt.show()
+     
                 sol_prev = sol
                 pipe.send(sol.value(states[f"Y_{agent_id}"]))
                 

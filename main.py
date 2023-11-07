@@ -24,7 +24,7 @@ if __name__ == "__main__":
     convex_problem = True
     # x0,xr = util.setup_3_quads()
     x0, xr = util.setup_5_quads()
-    T = 15
+    T = 20
     radius = 0.4
     n_states = 6
     n_inputs = 3
@@ -37,7 +37,8 @@ if __name__ == "__main__":
 
     R = np.eye(n_inputs*n_agents)*0.1
     Qf = Q*100
-    ADMM_ITER = 10
+    # ADMM_ITER = 10
+    ADMM_ITER = 5
     
     
     """Run convex version first:"""
