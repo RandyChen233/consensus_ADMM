@@ -349,7 +349,7 @@ def define_inter_graph_threshold(X, radius, x_dims, ids, n_dims=None):
     else:    
         rel_dists = compute_pairwise_distance(X, x_dims)
     
-    print(f'determining interaction graph with the following pair-wise distance : {rel_dists}')
+    # print(f'determining interaction graph with the following pair-wise distance : {rel_dists}')
     # N = X.shape[0]
     # n_samples = 10
     # sample_step = max(N // n_samples, 1)
@@ -386,9 +386,9 @@ def compute_pairwise_distance_nd_Sym(X, x_dims, n_dims):
             dX = Xi-Xj
 
             if n_dim == 3:
-                distances.append(sqrt(dX[0,:]**2+dX[1,:]**2+dX[2,:]**2+eps))
+                distances.append(sqrt(dX[0,:]**2 + dX[1,:]**2 + dX[2,:]**2+eps))
             else:
-                distances.append(sqrt(dX[0,:]**2+dX[1,:]**2 + eps)+CYLINDER_RADIUS)
+                distances.append(sqrt(dX[0,:]**2 + dX[1,:]**2 + eps)+CYLINDER_RADIUS)
     
     return distances
 
@@ -405,4 +405,5 @@ def compute_pairwise_distance(X, x_dims, n_d=3):
     pair_inds = np.array(list(itertools.combinations(range(n_agents), 2)))
     X_agent = X.reshape(-1, n_agents, n_states).swapaxes(0, 2)
     dX = X_agent[:n_d, pair_inds[:, 0]] - X_agent[:n_d, pair_inds[:, 1]]
+    
     return np.linalg.norm(dX, axis=0).T

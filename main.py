@@ -20,14 +20,14 @@ from admm_mpc import *
 if __name__ == "__main__":
     convex_problem = True
     # x0,xr = util.setup_3_quads()
-    # x0, xr = util.setup_5_quads()
-    x0, xr = util.four_quad_exchange()
-    T = 30
+    x0, xr = util.setup_5_quads()
+    # x0, xr = util.four_quad_exchange()
+    T = 15
     radius = 0.4
     n_states = 6
     n_inputs = 3
     # n_agents = 3
-    n_agents = 4
+    n_agents = 5
     ids = [100+n for n in range(n_agents)]
     Q = np.eye(n_states*n_agents)*1
     for i in range(n_agents):
