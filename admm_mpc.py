@@ -36,7 +36,7 @@ def solve_distributed_rhc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, 
     X_full = np.r_[X_full, x0.reshape(1,-1)]
     
     distributed_mpc_iters =0
-    solve_times_mean = []
+    solve_times_mean = []   
     solve_times_std = []
     
     x_curr = x0
@@ -45,8 +45,7 @@ def solve_distributed_rhc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, 
     dt = 0.1
 
     SOVA_admm = True
-    
-    # t_kill = 5*n_agents * T * dt
+
     while not np.all(np.all(dpilqr.distance_to_goal(x_curr.flatten(), xr.flatten(), \
                                                     n_agents, n_states, 3) <= 0.1)):
         # rel_dists = util.compute_pairwise_distance_nd_Sym(x0,x_dims,n_dims)
@@ -143,76 +142,78 @@ def solve_distributed_rhc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, 
 
 
 
-# def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_trial=None):
-#     SOVA_admm = False
-#     nx = n_states*n_agents
-#     nu = n_inputs*n_agents
-#     X_full = np.zeros((0, nx))
-#     U_full = np.zeros((0, nu))
-#     X_full = np.r_[X_full, x0.reshape(1,-1)]
-#     u_ref = np.array([0, 0, 0]*n_agents)
-#     # u_ref = np.array([0, 0, 9.8]*n_agents)
+def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_trial=None):
+    SOVA_admm = False
+    nx = n_states*n_agents
+    nu = n_inputs*n_agents
+    X_full = np.zeros((0, nx))
+    U_full = np.zeros((0, nu))
+    X_full = np.r_[X_full, x0.reshape(1,-1)]
+    u_ref = np.array([0, 0, 0]*n_agents)
+    # u_ref = np.array([0, 0, 9.8]*n_agents)
     
-#     x_curr = x0
-#     mpc_iter = 0
-#     obj_history = [np.inf]
-#     solve_times = []
-#     t = 0
-#     dt = 0.1
+    x_curr = x0
+    mpc_iter = 0
+    obj_history = [np.inf]
+    solve_times = []
+    t = 0
+    dt = 0.1
 
-#     while not np.all(dpilqr.distance_to_goal(x_curr.flatten(), xr.flatten(), n_agents, n_states, 3) <= 0.1):
+    while not np.all(dpilqr.distance_to_goal(x_curr.flatten(), xr.flatten(), n_agents, n_states, 3) <= 0.1):
         
-#         try:
-#             x_trj_converged, u_trj_converged, _, admm_time = solve_consensus(n_states, n_inputs, n_agents, x_curr, \
-#                                                                  xr, T, radius, Q, R, Qf, MAX_ITER)
+        try:
+            x_trj_converged, u_trj_converged, _, admm_time = solve_consensus(n_states, n_inputs, 
+                                                                             n_agents, x_curr, 
+                                                                            xr, T, radius, 
+                                                                            Q, R, Qf, MAX_ITER)
             
-#             solve_times.append(admm_time)
+            solve_times.append(admm_time)
             
-#         except EOFError or RuntimeError:
-#             admm_time = np.inf
-#             solve_times.append(admm_time)
-#             print('Error encountered in solve_iteration!! Exiting...')
-#             converged = False
-#             obj_trj = np.inf
-#             logging.info(
-#             f'{n_trial},'
-#             f'{n_agents},{t},{converged},'
-#             f'{obj_trj},{T},{dt},{radius},{SOVA_admm},{np.mean(solve_times)},{np.std(solve_times)}, {MAX_ITER},'
-#             f'{dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)},'
-#             )
-#             return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
+        except EOFError or RuntimeError:
+            admm_time = np.inf
+            solve_times.append(admm_time)
+            print('Error encountered in ADMM iterations !! Exiting...')
+            converged = False
+            obj_trj = np.inf
+            logging.info(
+            f'{n_trial},'
+            f'{n_agents},{t},{converged},'
+            f'{obj_trj},{T},{dt},{radius},{SOVA_admm},{np.mean(solve_times)},{np.std(solve_times)}, {MAX_ITER},'
+            f'{dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)},'
+            )
+            return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
             
-#         obj_history.append(float(util.objective(x_trj_converged.T, u_trj_converged.T, u_ref, xr, Q, R, Qf)))
+        obj_history.append(float(util.objective(x_trj_converged.T, u_trj_converged.T, u_ref, xr, Q, R, Qf)))
         
-#         x_curr = x_trj_converged[1]
-#         u_curr = u_trj_converged[0]
+        x_curr = x_trj_converged[1]
+        u_curr = u_trj_converged[0]
         
-#         X_full = np.r_[X_full, x_curr.reshape(1,-1)]
-#         U_full = np.r_[U_full, u_curr.reshape(1,-1)]
+        X_full = np.r_[X_full, x_curr.reshape(1,-1)]
+        U_full = np.r_[U_full, u_curr.reshape(1,-1)]
         
-#         mpc_iter += 1
-#         t += dt
-#         if mpc_iter > 35:
-#             print('Max MPC iters reached!Exiting MPC loops...')
-#             converged = False
-#             break
+        mpc_iter += 1
+        t += dt
+        if mpc_iter > 35:
+            print('Max MPC iters reached!Exiting MPC loops...')
+            converged = False
+            break
 
-#     print(f'Final distance to goal is {dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)}')
+    print(f'Final distance to goal is {dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)}')
     
-#     if np.all(dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3) <= 0.1):
-#         converged = True
+    if np.all(dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3) <= 0.1):
+        converged = True
 
-#     obj_trj = float(util.objective(X_full.T, U_full.T, u_ref, xr, Q, R, Qf))
+    obj_trj = float(util.objective(X_full.T, U_full.T, u_ref, xr, Q, R, Qf))
     
-#     logging.info(
-#     f'{n_trial},'
-#     f'{n_agents},{t},{converged},'
-#     f'{obj_trj},{T},{dt},{radius},{SOVA_admm},{np.mean(solve_times)},{np.std(solve_times)}, {MAX_ITER},'
-#     f'{dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)},'
-#     )
+    logging.info(
+    f'{n_trial},'
+    f'{n_agents},{t},{converged},'
+    f'{obj_trj},{T},{dt},{radius},{SOVA_admm},{np.mean(solve_times)},{np.std(solve_times)}, {MAX_ITER},'
+    f'{dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)},'
+    )
     
     
-#     return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
+    return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
 
 
 def solve_consensus(n_states, n_inputs, n_agents, 
@@ -286,81 +287,74 @@ def solve_consensus(n_states, n_inputs, n_agents,
         cost += (rho/2)*sumsqr(states[f"Y_{agent_id}"] - xbar + u)
         dt = 0.1
         Ad, Bd = linear_kinodynamics(dt,N)
+        
+        for k in range(T):
+            X_next = states[f"Y_{agent_id}"][:(T+1)*nx][(k+1)*nx:(k+2)*nx]
+            X_curr = states[f"Y_{agent_id}"][:(T+1)*nx][k*nx:(k+1)*nx]
+            U_curr = states[f"Y_{agent_id}"][(T+1)*nx:][k*nu:(k+1)*nu]
+            # print(f'No. of agents is {n_agents}, shape of X_curr is {X_curr.shape}')
+            # print(f'No. of agents is {n_agents}, shape of U_curr is {U_curr.shape}')
+        
+            d[f"opti_{agent_id}"].subject_to(X_next==Ad @ X_curr + Bd @ U_curr) # close the gaps
+            
+            #Constrain the acceleration vector
+            d[f"opti_{agent_id}"].subject_to(U_curr <= np.tile(np.array([2, 2, 2]),(N,)).reshape(-1,1))
+            d[f"opti_{agent_id}"].subject_to(np.tile(np.array([-2, -2, -2]),(N,)).reshape(-1,1) <= U_curr)
+
+            # Terminal velocity constraint?
+            # for i in range(N):
+            #     d[f"opti_{agent_id}"].subject_to(states[f"Y_{agent_id}"][:(T+1)*nx][T*nx:(T+1)*nx][i*n_states:(i+1)*n_states][3:6]== np.zeros(3).reshape(-1,1))
+            
+            if convex_problem:
+                #Collision avoidance via Bufferd Voronoi Cells
+                """Reference: https://ieeexplore.ieee.org/document/7828016"""
+                if N > 1:
+                    i = agent_id
+                    p_i_next =  X_curr[i*n_states:(i+1)*n_states][:3]
+                    p_i_prev = cs.MX(x0[i*n_states:(i+1)*n_states][:3])
+                    for j in range(N):
+                        if j != i:
+                            p_j_prev = cs.MX(x0[j*n_states:(j+1)*n_states][:3])
+                            p_ij = p_j_prev - p_i_prev
+                            bvc_i = p_ij.T @ p_i_next - (p_ij.T @ (p_i_prev + p_j_prev)/2 + \
+                                                        r_min*cs.norm_2(p_i_prev-p_j_prev))
+                            # print(bvc_i.is_scalar())
+                            d[f"opti_{agent_id}"].subject_to(bvc_i <= 0)    
+                                             
+            else:
+                if N > 1:  
+                    distances = util.compute_pairwise_distance_nd_Sym(states[f"Y_{agent_id}"][:(T+1)*nx][k*nx:(k+1)*nx], x_dims, n_dims)
+                    # Collision avoidance constraint
+                    for dist in distances:
+                        d[f"opti_{agent_id}"].subject_to(dist >= r_min) 
+                        
+        X0 = d[f"opti_{agent_id}"].parameter(x0.shape[0],1)
+        d[f"opti_{agent_id}"].subject_to(states[f"Y_{agent_id}"][:(T+1)*nx][0:nx] == X0)
+        cost_tot = cost 
+        d[f"opti_{agent_id}"].minimize(cost_tot)
+        
+        if convex_problem:
+            d[f"opti_{agent_id}"].solver("osqp",opts) #Our problem is convex
+        else:
+            d[f"opti_{agent_id}"].solver("ipopt",opts)
+        
+        # if iter > 0:
+            # d[f"opti_{agent_id}"].set_initial(sol_prev.value_variables())
+        d[f"opti_{agent_id}"].set_value(X0,x0)    
+        
         # ADMM loop
-        iter = 0
         while True:
             try:
-                for k in range(T):
-                    X_next = states[f"Y_{agent_id}"][:(T+1)*nx][(k+1)*nx:(k+2)*nx]
-                    X_curr = states[f"Y_{agent_id}"][:(T+1)*nx][k*nx:(k+1)*nx]
-                    U_curr = states[f"Y_{agent_id}"][(T+1)*nx:][k*nu:(k+1)*nu]
-                    # print(f'No. of agents is {n_agents}, shape of X_curr is {X_curr.shape}')
-                    print(f'No. of agents is {n_agents}, shape of U_curr is {U_curr.shape}')
-                    print(f'Shape of Bd is {Bd.shape}')
-                
-                    d[f"opti_{agent_id}"].subject_to(X_next==Ad @ X_curr + Bd @ U_curr) # close the gaps
-                    
-                    d[f"opti_{agent_id}"].subject_to(U_curr <= np.tile(np.array([2, 2, 2]),(N,)).reshape(-1,1))
-                    d[f"opti_{agent_id}"].subject_to(np.tile(np.array([-2, -2, -2]),(N,)).reshape(-1,1) <= U_curr)
-
-                    if convex_problem:
-                        #Collision avoidance via Bufferd Voronoi Cells
-                        """Reference: https://ieeexplore.ieee.org/document/7828016"""
-                        if N > 1:
-                            for i in range(N):
-                                p_i_next =  X_next[i*n_states:(i+1)*n_states][:3]
-                                p_i_prev = x0[i*n_states:(i+1)*n_states][:3]
-                                for j in range(N):
-                                    if j!= i:
-                                        p_j_prev = x0[j*n_states:(j+1)*n_states][:3]
-                                        p_ij = p_j_prev - p_i_prev
-                                        bvc_i = p_ij.T @ p_i_next - (p_ij.T @ (p_i_prev + p_j_prev)/2 + \
-                                                                    r_min*cs.norm_2(p_i_prev-p_j_prev))
-                                        d[f"opti_{agent_id}"].subject_to(bvc_i <= 0)
-                    else:
-                        if N > 1:
-                            if k <=2:
-                                distances = util.compute_pairwise_distance_nd_Sym(states[f"Y_{agent_id}"][:(T+1)*nx][k*nx:(k+1)*nx], x_dims, n_dims)
-                                # Collision avoidance constraint
-                                for dist in distances:
-                                    d[f"opti_{agent_id}"].subject_to(dist >= r_min) 
-                            else:
-                                pass
-                            
-                # Terminal velocity constraint?
-                # for i in range(N):
-                #     d[f"opti_{agent_id}"].subject_to(states[f"Y_{agent_id}"][:(T+1)*nx][T*nx:(T+1)*nx][i*n_states:(i+1)*n_states][3:6]== np.zeros(3).reshape(-1,1))
-                
-                X0 = d[f"opti_{agent_id}"].parameter(x0.shape[0],1)
-                d[f"opti_{agent_id}"].subject_to(states[f"Y_{agent_id}"][0:nx] == X0)
-                cost_tot = cost 
-                d[f"opti_{agent_id}"].minimize(cost_tot)
-                
-                if convex_problem:
-                    d[f"opti_{agent_id}"].solver("osqp",opts) #Our problem is convex
-                else:
-                    d[f"opti_{agent_id}"].solver("ipopt",opts)
-                
-                if iter > 0:
-                    d[f"opti_{agent_id}"].set_initial(sol_prev.value_variables())
-                
-                d[f"opti_{agent_id}"].set_value(X0,x0)
                 sol = d[f"opti_{agent_id}"].solve()
-          
+                
                 #Checking sparsity of constraint jacobian:
                 #plt.spy(sol.value(jacobian(d[f"opti_{agent_id}"].g,d[f"opti_{agent_id}"].x)))
                 #plt.show()
-     
-                sol_prev = sol
-                pipe.send(sol.value(states[f"Y_{agent_id}"]))
                 
+                pipe.send(sol.value(states[f"Y_{agent_id}"]))
                 d[f"opti_{agent_id}"].set_value(xbar, pipe.recv()) #receive the averaged result from the main process.
                 d[f"opti_{agent_id}"].set_value(u, sol.value( u + states[f"Y_{agent_id}"] - xbar))
-                
-                d[f"opti_{agent_id}"].subject_to()
-                
-                iter += 1                
-                
+                                
             except EOFError:
                 print("Connection closed.")
                 break
