@@ -39,15 +39,7 @@ if __name__ == "__main__":
     Qf = Q*100
     ADMM_ITER = 10
     # ADMM_ITER = 5
-    
-    # X_full, U_full, obj_trj, mean_time, obj_history = solve_distributed_rhc(ids, n_states, \
-    #                                                                         n_inputs, n_agents, \
-    #                                                                         x0, xr, T, radius, \
-    #                                                                         Q, R, Qf, ADMM_ITER, \
-    #                                                                         convex_problem=convex,
-    #                                                                         n_trial=None)
-    
-    # np.savez("distributed_BVC_convex_{}.npz".format(n_agents), X_full=X_full, obj_trj=obj_trj, obj_hist = obj_history, xr=xr)
+    MPC_ITER = 100
     
     X_full, U_full, obj_trj, mean_time, obj_history = solve_admm_mpc(n_states, 
                                                                      n_inputs, 
@@ -59,7 +51,9 @@ if __name__ == "__main__":
                                                                      Q, 
                                                                      R, 
                                                                      Qf, 
+                                                                     MPC_ITER,
                                                                      ADMM_ITER, n_trial=None)
+    
     np.savez("admm_consensus_BVC_convex_{}.npz".format(n_agents), X_full=X_full, obj_trj=obj_trj, obj_hist = obj_history, xr=xr)
     
     # X_trj, U_trj, obj_trj, mean_times, obj_hist = solve_mpc_centralized(n_agents,
