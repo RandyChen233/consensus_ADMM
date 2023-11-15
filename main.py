@@ -34,10 +34,10 @@ if __name__ == "__main__":
     Q = np.eye(n_states*n_agents)*1
     for i in range(n_agents):
         Q[i*n_states:(i+1)*n_states][0:3] = 5
-
+    
     R = np.eye(n_inputs*n_agents)*0.1
     Qf = Q*100
-    ADMM_ITER = 10
+    ADMM_ITER = 5
     # ADMM_ITER = 5
     MPC_ITER = 100
     
