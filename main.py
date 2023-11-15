@@ -37,7 +37,7 @@ if __name__ == "__main__":
     
     R = np.eye(n_inputs*n_agents)*0.1
     Qf = Q*100
-    ADMM_ITER = 15
+    ADMM_ITER = 30
     # ADMM_ITER = 5
     MPC_ITER = 100
     
