@@ -5,6 +5,8 @@ from dynamics import *
 from time import perf_counter
 import logging
 
+"""This is centralized MPC without iterative consensus"""
+
 def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_trial = None):
 	SOVA_admm = 'centralized_mpc'
 	nx = n_agents * 6
@@ -30,7 +32,7 @@ def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_tri
 
 	obj_hist = [np.inf]
 	x_curr = x0
-	u_curr = np.zeros((9,1))
+	u_curr = np.zeros((nu,1))
  
 	X_trj = np.zeros((0, nx))
 	U_trj = np.zeros((0, nu))
@@ -45,8 +47,8 @@ def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_tri
 	n_dims = [3]*N
 	n_inputs = 3
 	n_states = 6
-	r_min = 1.5*radius
- 
+	r_min = 2*radius
+	
 	Ad,Bd = linear_kinodynamics(dt,n_agents)
 	A_i = Ad[0:6,0:6]
 	B_i = Bd[0:6,0:3]
@@ -58,9 +60,16 @@ def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_tri
 		
 			opti.subject_to(X_next==Ad @ X_curr + Bd @ U_curr) # close the gaps
 			
+			#Constrain acceleration (control input):
 			opti.subject_to(Y_state[(T+1)*nx:][k*nu:(k+1)*nu] <= np.tile(np.array([2, 2, 2]),(N,)).reshape(-1,1))
 			opti.subject_to(np.tile(np.array([-2, -2, -2]),(N,)).reshape(-1,1) <= Y_state[(T+1)*nx:][k*nu:(k+1)*nu])
 
+			#Constrain velocity:
+			for i in range(n_agents):
+				opti.subject_to(Y_state[(T+1)*nx:][i*n_states:(i+1)*n_states][3:6] <= np.array([1.5, 1.5, 1.5]))
+				opti.subject_to(np.array([-1.5, -1.5, -1.5]) <= Y_state[(T+1)*nx:][i*n_states:(i+1)*n_states][3:6])
+
+			#Collision avoidance via BVCs
 			for i in range(n_agents):
 				agent_i_trj = forward_pass(	A_i,
 							   				B_i,
@@ -76,17 +85,15 @@ def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_tri
 													x_curr[j*n_states:(j+1)*n_states],
 													u_curr[j*n_inputs:(j+1)*n_inputs])
       
-						p_ij = agent_j_trj[:,k][:3] - agent_i_trj[:,k][:3]
-						# bvc_i = cs.dot(p_ij , p_i_next) - (cs.dot(p_ij , (agent_i_trj[:,k][:3] + agent_j_trj[:,k][:3]))/2 + \
-						# 							r_min*cs.norm_2(agent_i_trj[:,k][:3]-agent_j_trj[:,k][:3]))
-      
 						a_ij  =  (agent_i_trj[:,k][:3] -agent_j_trj[:,k][:3])/cs.norm_2(agent_i_trj[:,k][:3] -agent_j_trj[:,k][:3])
 						b_ij = cs.dot(a_ij, (agent_i_trj[:,k][:3] + agent_j_trj[:,k][:3])/2) + r_min/2
-						# print(bvc_i.is_scalar())
-						# opti.subject_to(bvc_i <=0 )   
 						opti.subject_to(cs.dot(a_ij, p_i_next) >= b_ij )
+      
 
-					
+		#Terminal velocity constraint for recursive feasibility? Somehow this is not working... :
+		# for i in range(n_agents):
+			# opti.subject_to(Y_state[T*nx:(T+1)*nx][i*n_states:(i+1)*n_states][3:] == np.zeros((n_inputs,1)))
+	
 		X0 = opti.parameter(x0.shape[0],1)     
 		opti.subject_to(Y_state[0:nx] == X0)
 		
@@ -97,8 +104,8 @@ def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_tri
 		opti.solver("osqp")
 		opti.set_value(X0,x_curr)
 		
-		# if iters > 0:
-		# 	opti.set_initial(sol_prev.value_variables())
+		if iters > 0:
+			opti.set_initial(sol_prev.value_variables())
 			
 		t0 = perf_counter()
 		try:
@@ -122,7 +129,7 @@ def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_tri
 		
 		iters += 1
 		t += dt
-		if iters > 50:
+		if iters > 100:
 			converged = False
 			print(f'Max MPC iters reached; exiting MPC loops.....')
 			break

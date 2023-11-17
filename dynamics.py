@@ -26,3 +26,18 @@ def linear_kinodynamics(dt,n_agent):
         
     
     return A_tot, B_tot
+
+
+def forward_pass(A, B, horizon, x_curr, u_curr):
+    
+    x_prev = x_curr
+    
+    x_rollout = np.zeros((x_curr.shape[0], horizon+1))
+    x_rollout[:,0] = x_prev.flatten()
+    
+    for t in range(1,horizon+1):
+        x_next = A@x_prev + B@u_curr
+        x_prev = x_next
+        x_rollout[:,t] = x_prev.flatten()
+    
+    return x_rollout   
