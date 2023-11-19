@@ -21,6 +21,7 @@ from multiprocessing import Process, Pipe
 
 opts = {'error_on_fail':False}
 
+"""To keep the code simple, peer-to-peer communication is not used"""
 
 # def solve_distributed_rhc(ids, n_states, n_inputs, 
 # 						  n_agents, x0, xr, T, 
@@ -153,7 +154,7 @@ opts = {'error_on_fail':False}
 	
 # 	return X_full, U_full, obj_trj, np.mean(solve_times_mean), obj_history
 
-setup_logger_admm()
+# setup_logger_admm()
 def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, ADMM_ITER, n_trial=None):
 	SOVA_admm = False
 	nx = n_states*n_agents
@@ -186,7 +187,7 @@ def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MA
 		try:
 		
 			#Solve current MPC via consensus ADMM:
-			x_trj_converged, u_trj_converged, _, admm_time= solve_consensus(Ad, Bd,
+			x_trj_converged, u_trj_converged, _, admm_time=solve_consensus_nonlinear(Ad, Bd,
 																			A_i,B_i,
                                                                    			x_curr,
 																			u_curr,
@@ -221,7 +222,7 @@ def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MA
 		
 		mpc_iter += 1
 		t += dt
-		if mpc_iter > 50:
+		if mpc_iter > MAX_ITER:
 			print('Max MPC iters reached!Exiting MPC loops...')
 			converged = False
 			break
@@ -258,10 +259,8 @@ def solve_consensus(Ad, Bd,
 	R = R[0:n_inputs,0:n_inputs]
 	Qf = Qf[0:n_states,0:n_states]
 	def run_worker(agent_id, pipe, x_curr):
-		if convex_problem:
-			opti = Opti('conic')
-		else:
-			opti = Opti()
+		opti = Opti('conic')
+  
 		"Reference https://www.cvxpy.org/examples/applications/consensus_opt.html"
 		xbar = opti.parameter((T+1)*nx + T*nu)
 		opti.set_value(xbar, cs.GenDM_zeros((T+1)*nx + T*nu,1))   
@@ -270,7 +269,7 @@ def solve_consensus(Ad, Bd,
 		opti.set_value(u, cs.GenDM_zeros((T+1)*nx + T*nu,1))
 		X0 = opti.parameter(x_curr[:n_states].shape[0],1)
 
-		rho = 1.0
+		rho = 0.5
 		f = 0 		#local cost
 		#Local quadratic tracking cost:
 		for t in range(T):
@@ -314,45 +313,32 @@ def solve_consensus(Ad, Bd,
 				opti.subject_to(np.array([-1.5, -1.5, -1.5]) <= X_curr[3:6])
 	
 			# Collision avoidance constraints via BVCs
-			if convex_problem:
-				i = agent_id
-				agent_i_trj = forward_pass(A_i,
-											B_i,
-											T,
-											x_curr[i *n_states:(i +1)*n_states],
-											u_curr[i *n_inputs:(i +1)*n_inputs])
-				
-				p_i_next = X_curr[:3]
-				for j in range(n_agents):
-					if j != i :
-						agent_j_trj = forward_pass( A_i,
-													B_i,
-													T,
-													x_curr[j*n_states:(j+1)*n_states],
-													u_curr[j*n_inputs:(j+1)*n_inputs])
-		
-						a_ij  =  (agent_i_trj[:,k][:3] -agent_j_trj[:,k][:3])/cs.norm_2(agent_i_trj[:,k][:3] -agent_j_trj[:,k][:3])
-						b_ij = cs.dot(a_ij, (agent_i_trj[:,k][:3] + agent_j_trj[:,k][:3])/2) + r_min/2
-						opti.subject_to(cs.dot(a_ij, p_i_next) >= b_ij )
-			else:
-				i = agent_id
-				if i == 100:
-					p_i = X_curr[:3]
-					for j in range(n_agents):
-						if j !=i:
-							p_j = states[:(T+1)*nx][k*nx:(k+1)*nx][j*n_states:(j+1)*n_states][:3]
-							opti.subject_to(cs.norm_2(p_i-p_j) >= 2* r_min)
-				else:
-					
-					pass
+
+			i = agent_id
+			agent_i_trj = forward_pass(A_i,
+										B_i,
+										T,
+										x_curr[i *n_states:(i +1)*n_states],
+										u_curr[i *n_inputs:(i +1)*n_inputs])
+			
+			p_i_next = X_curr[:3]
+			for j in range(n_agents):
+				if j != i:
+					# continue
+					agent_j_trj = forward_pass( A_i,
+												B_i,
+												T,
+												x_curr[j*n_states:(j+1)*n_states],
+												u_curr[j*n_inputs:(j+1)*n_inputs])
+
+					a_ij  =  (agent_i_trj[:,k][:3] -agent_j_trj[:,k][:3])/cs.norm_2(agent_i_trj[:,k][:3] -agent_j_trj[:,k][:3])
+					b_ij = cs.dot(a_ij, (agent_i_trj[:,k][:3] + agent_j_trj[:,k][:3])/2) + r_min/2
+					opti.subject_to(cs.dot(a_ij, p_i_next) >= b_ij )
 
 
 		# ADMM loop
 		iters = 0
-		if convex_problem:
-			opti.solver("osqp",opts) 
-		else:
-			opti.solver("ipopt",opts)
+		opti.solver("osqp",opts)
 
 		opti.minimize(f)
 		opti.set_value(X0,x_curr[agent_id*n_states:(agent_id+1)*n_states])
@@ -407,9 +393,15 @@ def solve_consensus(Ad, Bd,
 		residual = np.linalg.norm(sum(pipe.recv() for pipe in pipes)/N)
 		residual_list.append(residual)
 		print(f'Current residual is {residual}')
-		if abs(residual_list[iter]-residual_list[iter-1]) <= 0.005 or iter >=ADMM_ITER:
+  
+		#Specify a dual convergence criterion (||r_{k+1}-r_{k}|| <= eps)
+		if abs(residual_list[iter]-residual_list[iter-1]) <= 0.005 and iter >=10:
 			converged = True
 			print(f'Current ADMM updates converged at the {iter}th iter\n')
+			break
+
+		if iter > ADMM_ITER:
+			print(f'Max ADMM iterations reached!\n')
 			break
 		
 	admm_iter_time = perf_counter() - t0  
@@ -419,3 +411,160 @@ def solve_consensus(Ad, Bd,
 	u_trj_converged = solution_list[-1][(T+1)*nx:].reshape((T,nu))
 	
 	return x_trj_converged, u_trj_converged, solution_list, admm_iter_time
+
+
+
+def solve_consensus_nonlinear(Ad, Bd,
+                    A_i,B_i,
+                    x_curr,
+                    u_curr, 
+                    xr, Q, R, Qf, 
+                    T, nx, nu, r_min,
+                    N, ADMM_ITER, convex_problem, n_trial):
+
+	n_agents = N
+	n_states = 6
+	n_inputs = 3
+	Q = Q[0:n_states,0:n_states]
+	R = R[0:n_inputs,0:n_inputs]
+	Qf = Qf[0:n_states,0:n_states]
+	x_dims = [n_states]*n_agents
+	n_dims = [3]*n_agents
+	def run_worker(agent_id, pipe, x_curr):
+		opti = Opti()
+		"Reference https://www.cvxpy.org/examples/applications/consensus_opt.html"
+		xbar = opti.parameter((T+1)*nx + T*nu)
+		opti.set_value(xbar, cs.GenDM_zeros((T+1)*nx + T*nu,1))   
+		states = opti.variable((T+1)*nx + T* nu)
+		u = opti.parameter((T+1)*nx + T*nu)
+		opti.set_value(u, cs.GenDM_zeros((T+1)*nx + T*nu,1))
+		X0 = opti.parameter(x_curr[:n_states].shape[0],1)
+
+		rho = 0.5
+		f = 0 		#local cost
+		#Local quadratic tracking cost:
+		for t in range(T):
+			state_curr = states[:(T+1)*nx][t*nx:(t+1)*nx][agent_id*n_states:(agent_id+1)*n_states]
+			state_ref = xr[agent_id*n_states:(agent_id+1)*n_states]
+			for idx in range(n_states):
+				f += (state_curr[idx] - state_ref[idx]) * Q[idx,idx] * (state_curr[idx] - state_ref[idx]) 
+				# print(f.is_scalar())
+			input_curr = states[(T+1)*nx:][t*nu:(t+1)*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
+			for idu in range(n_inputs):
+				f += (input_curr[idu]) * R[idu,idu] * (input_curr[idu])
+				# print(f.is_scalar())
+		
+		#Local quadratic terminal cost:
+		for idf in range(n_states):
+			states_T = states[T*nx:(T+1)*nx][agent_id*n_states:(agent_id+1)*n_states]
+			state_ref = xr[agent_id*n_states:(agent_id+1)*n_states]
+			f += (states_T[idf] - state_ref[idf]) * Qf[idf,idf] * (states_T[idf] - state_ref[idf])
+			# print(f.is_scalar())
+     
+		"""Reference: https://www.cvxpy.org/examples/applications/consensus_opt.html"""
+		#Augmented cost :
+		f += (rho/2)*sumsqr(states - xbar + u) 
+
+		#Local constraints for current MPC:
+		opti.subject_to(states[0:nx][agent_id*n_states:(agent_id+1)*n_states] == X0)
+		for k in range(T):
+			X_next = states[:(T+1)*nx][(k+1)*nx:(k+2)*nx][agent_id*n_states:(agent_id+1)*n_states]
+			X_curr = states[:(T+1)*nx][k*nx:(k+1)*nx][agent_id*n_states:(agent_id+1)*n_states]
+			U_curr = states[(T+1)*nx:][k*nu:(k+1)*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
+
+			opti.subject_to(X_next==A_i @ X_curr + B_i @ U_curr) # close the gaps
+			
+			#Constrain the acceleration vector
+			opti.subject_to(U_curr <= np.array([2, 2, 2]))
+			opti.subject_to(np.array([-2, -2, -2]) <= U_curr)
+			
+			#Constrain velocity:
+			for i in range(n_agents):
+				opti.subject_to(X_curr[3:6] <= np.array([1.5, 1.5, 1.5]))
+				opti.subject_to(np.array([-1.5, -1.5, -1.5]) <= X_curr[3:6])
+	
+			# Collision avoidance constraints
+			if agent_id == 0:
+				p_i = states[:(T+1)*nx][k*nx:(k+1)*nx][agent_id*n_states:(agent_id+1)*n_states][:3]
+				for j in range(n_agents):
+					if j != agent_id:
+						p_j = states[:(T+1)*nx][k*nx:(k+1)*nx][j*n_states:(j+1)*n_states][:3]
+						opti.subject_to(cs.norm_2(p_j-p_i) >= r_min * 2)
+
+			# TODO: This probably should not be enforced in the primal update directly....
+
+		# ADMM loop
+		iters = 0
+		opti.solver("ipopt",opts)
+
+		opti.minimize(f)
+		opti.set_value(X0,x_curr[agent_id*n_states:(agent_id+1)*n_states])
+  
+		while True:
+			try:    
+				sol = opti.solve()
+				# """Checking sparsity of constraint jacobian:"""
+				# plt.spy(sol.value(jacobian(d[f"opti_{agent_id}"].g,d[f"opti_{agent_id}"].x)))
+				# plt.show()
+				pipe.send(sol.value(states))
+				opti.set_value(xbar, pipe.recv()) #receive the averaged result from the main process.
+				opti.set_value(u, sol.value( u + states - xbar))
+				pipe.send(sol.value( u + states - xbar))
+				iters += 1
+				logging.info(
+					f'{agent_id},{n_trial},'
+					f'{n_agents},{iters},'
+					f'{sol.value(f)},'
+					)
+    
+			except EOFError:
+				print("Connection closed.")
+				break
+				 
+	pipes = []
+	procs = []
+	for i in range(N):
+		local, remote = Pipe()
+		pipes += [local]
+		procs += [Process(target=run_worker, args=(i, remote, x_curr))]
+		procs[-1].start()
+
+	solution_list = []
+	# x_bar_history = [np.zeros((nx, 1))] #Recording how the averaged value x_bar evolves
+	iter = 0
+	t0 = perf_counter()
+	"""Execute ADMM loop in parallel:"""
+	converged = False
+	# for _ in range(ADMM_ITER):
+	residual_list = [np.inf]
+	while not converged:
+		# Gather and average Y_i
+		xbar = sum(pipe.recv() for pipe in pipes)/N
+		solution_list.append(xbar)
+
+		# Scatter xbar
+		for pipe in pipes:
+			pipe.send(xbar)
+		iter += 1
+
+		residual = np.linalg.norm(sum(pipe.recv() for pipe in pipes)/N)
+		residual_list.append(residual)
+		print(f'Current residual is {residual}')
+		#Specify a dual convergence criterion (||r_{k+1}-r_{k}|| <= eps)
+		if abs(residual_list[iter]-residual_list[iter-1]) <= 0.005 and iter >=10:
+			converged = True
+			print(f'Current ADMM updates converged at the {iter}th iter\n')
+			break
+
+		if iter > ADMM_ITER:
+			print(f'Max ADMM iterations reached!\n')
+			break
+		
+	admm_iter_time = perf_counter() - t0  
+	[p.terminate() for p in procs]
+
+	x_trj_converged = solution_list[-1][:(T+1)*nx].reshape((T+1,nx))
+	u_trj_converged = solution_list[-1][(T+1)*nx:].reshape((T,nu))
+	
+	return x_trj_converged, u_trj_converged, solution_list, admm_iter_time
+

@@ -20,8 +20,8 @@ from mpc import *
 if __name__ == "__main__":
     convex = True
     
-    x0,xr = util.paper_setup_3_quads()
-    # x0,xr = util.setup_3_quads()
+    # x0,xr = util.paper_setup_3_quads()
+    x0,xr = util.setup_3_quads()
     # x0, xr = util.setup_5_quads()
     # x0, xr = util.four_quad_exchange()
     
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     Qf = Q*100
     ADMM_ITER = 30
     # ADMM_ITER = 5
-    MPC_ITER = 100
+    MPC_ITER = 200
     
     X_full, U_full, obj_trj, mean_time, obj_history = solve_admm_mpc(n_states, 
                                                                      n_inputs, 
