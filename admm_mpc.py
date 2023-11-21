@@ -474,22 +474,24 @@ def solve_consensus_nonlinear(Ad, Bd,
 
 			opti.subject_to(X_next==A_i @ X_curr + B_i @ U_curr) # close the gaps
 			
-			#Constrain the acceleration vector
+			# Constrain the acceleration vector
 			opti.subject_to(U_curr <= np.array([2, 2, 2]))
 			opti.subject_to(np.array([-2, -2, -2]) <= U_curr)
 			
-			#Constrain velocity:
-			for i in range(n_agents):
-				opti.subject_to(X_curr[3:6] <= np.array([1.5, 1.5, 1.5]))
-				opti.subject_to(np.array([-1.5, -1.5, -1.5]) <= X_curr[3:6])
+			# #Constrain velocity:
+			# for i in range(n_agents):
+			# 	opti.subject_to(X_curr[3:6] <= np.array([1.5, 1.5, 1.5]))
+			# 	opti.subject_to(np.array([-1.5, -1.5, -1.5]) <= X_curr[3:6])
 	
 			# Collision avoidance constraints
 			if agent_id == 0:
-				p_i = states[:(T+1)*nx][k*nx:(k+1)*nx][agent_id*n_states:(agent_id+1)*n_states][:3]
+				p_i = states[:(T+1)*nx][(k+1)*nx:(k+2)*nx][agent_id*n_states:(agent_id+1)*n_states][:3]
 				for j in range(n_agents):
 					if j != agent_id:
-						p_j = states[:(T+1)*nx][k*nx:(k+1)*nx][j*n_states:(j+1)*n_states][:3]
-						opti.subject_to(cs.norm_2(p_j-p_i) >= r_min * 2)
+						p_j = states[:(T+1)*nx][(k+1)*nx:(k+2)*nx][j*n_states:(j+1)*n_states][:3]
+						# opti.subject_to(cs.norm_2(p_j-p_i) >= 0 )
+						p_ij = p_j - p_i
+						opti.subject_to(sqrt(p_ij[0]**2 + p_ij[1]**2 + p_ij[2]**2 + 0.001) >= 2*r_min)
 
 			# TODO: This probably should not be enforced in the primal update directly....
 
