@@ -20,16 +20,14 @@ from mpc import *
 if __name__ == "__main__":
     convex = True
     
-    # x0,xr = util.paper_setup_3_quads()
-    x0,xr = util.setup_3_quads()
-    # x0, xr = util.setup_5_quads()
-    # x0, xr = util.four_quad_exchange()
-    
+    x0,xr = util.paper_setup_3_quads()
+    # x0,xr = util.setup_5_quads()
+    # x0, xr = util.setup_10_quads()
     T = 10 # MPC horizon length
     radius = 0.3
     n_states = 6
     n_inputs = 3
-    n_agents = 3
+    n_agents = 10
     ids = [100+n for n in range(n_agents)]
     Q = np.eye(n_states*n_agents)*1
     for i in range(n_agents):
@@ -37,10 +35,10 @@ if __name__ == "__main__":
     
     R = np.eye(n_inputs*n_agents)*0.1
     Qf = Q*100
-    ADMM_ITER = 30
+    ADMM_ITER = 100
     # ADMM_ITER = 5
-    MPC_ITER = 200
-    
+    MPC_ITER = 100
+    setup_logger_admm()
     X_full, U_full, obj_trj, mean_time, obj_history = solve_admm_mpc(n_states, 
                                                                      n_inputs, 
                                                                      n_agents, 
