@@ -26,6 +26,7 @@ def plot_solve(X, J, x_goal, x_dims=None, color_agents=False, n_d=2, ax=None):
     N = X.shape[0]
     n = np.arange(N)
     cm = plt.cm.Set2
+    # cm = plt.cm.viridis 
 
     X_split = split_agents(X, x_dims)
     x_goal_split = split_agents(x_goal.reshape(1, -1), x_dims)
@@ -44,8 +45,8 @@ def plot_solve(X, J, x_goal, x_dims=None, color_agents=False, n_d=2, ax=None):
             if color_agents:
                 # c = [cm.colors[i]] * Xi.shape[0]
                 c = cm.colors[i]
-            # ax.plot(Xi[:, 0], Xi[:, 1], Xi[:, 2], c=c, lw=2)
-            ax.scatter(Xi[:, 0], Xi[:, 1], Xi[:, 2], c=c, lw=2)
+            ax.plot(Xi[:, 0], Xi[:, 1], Xi[:, 2], c=c, lw=2)
+            # ax.scatter(Xi[:, 0], Xi[:, 1], Xi[:, 2], c=c, lw=2)
             ax.scatter(
                 Xi[0, 0], Xi[0, 1], Xi[0, 2], 
                 s=50, c="w", marker="d", edgecolors="k", label="$x_0$")
@@ -60,9 +61,6 @@ def plot_solve(X, J, x_goal, x_dims=None, color_agents=False, n_d=2, ax=None):
     plt.margins(0.1)
     plt.title(f"Final Cost: {J:.3g}")
     plt.draw()
-
-
-
 
 def randomize_locs(n_pts, random=False, rel_dist=3.0, var=3.0, n_d=2):
     """Uniformly randomize locations of points in N-D while enforcing
@@ -122,7 +120,7 @@ def random_setup(
 
     x0 = np.c_[x_i, np.zeros((n_agents, n_states - n_d))]
     xf = np.c_[x_f, np.zeros((n_agents, n_states - n_d))]
-
+    
     if do_face:
         x0, xf = face_goal(x0, xf)
 
@@ -172,20 +170,6 @@ def pos_mask(x_dims, n_d=2):
     """Return a mask that's true wherever there's a spatial position"""
     return np.array([i % x_dims[0] < n_d for i in range(sum(x_dims))])
 
-
-def paper_setup_2_quads(random = False):
-    
-    x0 = np.array([[0.5, 1.5, 1, 0, 0, 0,
-                    2.5, 1.5, 1, 0, 0, 0]], 
-                     dtype=float).T
-    xf = np.array([[2.5, 1.5, 1, 0, 0, 0, 
-                    0.5, 1.5, 1, 0, 0, 0]]).T
-    if random == True:
-        x0[pos_mask([6]*2, 3)] += 0.05*np.random.randn(6, 1)
-        xf[pos_mask([6]*2, 3)] += 0.05*np.random.randn(6, 1)
-    return x0, xf
-
-
 def paper_setup_3_quads(random = False):
     
     x0 = np.array([[0.5, 1.5, 1.2, 0, 0, 0,
@@ -200,146 +184,51 @@ def paper_setup_3_quads(random = False):
         xf[pos_mask([6]*3, 3)] += 0.05*np.random.randn(9, 1)
     return x0, xf
 
-def setup_3_quads():
-    
-    x0,xf = random_setup(3,6,n_d=3,energy=3,var=3.0)
-    
-    for i in range(2,len(x0),6):
-        if x0[i] <= 0.5:
-            x0[i] = 1.2 + np.random.rand(1,)
-
-        if xf[i] <= 0.5:
-            xf[i] = 1.1 + np.random.rand(1,)*0.5
-
-    return x0, xf
-
- 
-def setup_4_quads():
-    
-    x0,xf = random_setup(4,6,n_d=3,energy=4,var=3.0)
-    
-    for i in range(2,len(x0),6):
-        if x0[i] <= 0.5:
-            x0[i] = 1.2 + np.random.rand(1,)
-
-        if xf[i] <= 0.5:
-            xf[i] = 1.1 + np.random.rand(1,)*0.5
-
-    return x0, xf
-
 def paper_setup_5_quads(random = False):
-
-    x0 = np.array([[0.5, 1.5, 1, 0, 0, 0,
-                    2.5, 1.5, 1, 0, 0, 0,
-                    1.5, 1.3, 1, 0, 0, 0,
-                    -0.5 ,0.5, 1, 0, 0, 0,
-                   1.1, 1.1, 1, 0, 0, 0]], 
+    
+    x0 = np.array([[0.5, 1.5, 1.5, 0, 0, 0,
+                    2.5, 1.5, 1.2, 0, 0, 0,
+                    1.0, -1.3, 0.8, 0, 0, 0,
+                    -2.0, 2.0, 1.9, 0, 0, 0,
+                    3.0, -1.5, 1.4, 0, 0, 0]], 
                      dtype=float).T
-    xf = np.array([[2.5, 1.5, 1, 0, 0, 0, 
-                    0.5, 1.5, 1, 0, 0, 0, 
-                    1.5, 2.2, 1, 0, 0, 0,
-                   -0.5, 1.5, 1, 0, 0, 0,
-                   -1.1, 1.1, 1, 0, 0, 0]]).T
-
+    xf = np.array([[2.5, 1.5, 1.5, 0, 0, 0, 
+                    0.5, 1.5, 1.7, 0, 0, 0, 
+                    1.5, 2.2, 1.0, 0, 0, 0,
+                    3.0, -1.5, 1.4, 0, 0, 0,
+                    1.0, -1.3, 0.8, 0, 0, 0,
+                    ]]).T
     if random == True:
         x0[pos_mask([6]*5, 3)] += 0.05*np.random.randn(15, 1)
         xf[pos_mask([6]*5, 3)] += 0.05*np.random.randn(15, 1)
-    
-    return x0,xf
-
-
-def setup_5_quads():
-
-    x0,xf = random_setup(5,6,n_d=3,energy=5,var=3.0)
-    
-    for i in range(2,len(x0),6):
-        if x0[i] <= 0.5:
-            x0[i] = 1.2 + np.random.rand(1,)
-
-        if xf[i] <= 0.5:
-            xf[i] = 1.1 + np.random.rand(1,)*0.5
-    
-    return x0,xf
-
-def four_quad_exchange():
-    x0 = np.array([[0.0, 1.5, 1.2, 0, 0, 0,
-                    1.5, 0.0, 1.2, 0, 0, 0,
-                    -1.5, 0.0, 1.2, 0, 0, 0,
-                    0.0 ,-1.5, 1.2, 0, 0, 0]], 
-                     dtype=float).T
-    
-    xf = np.array([[0.0, -1.5, 1.2, 0, 0, 0,
-                    -1.5, 0.0, 1.2, 0, 0, 0,
-                    1.5, 0.0, 1.2, 0, 0, 0,
-                    0.0 ,1.5, 1.2, 0, 0, 0]], 
-                     dtype=float).T
-
     return x0, xf
 
-def setup_6_quads():
 
-    x0,xf = random_setup(6,6,n_d=3,energy=6,var=3.0)
+def setup_n_quads(n):
+    r_safety = 0.3 * 2
+    right = False
     
-    for i in range(2,len(x0),6):
-        if x0[i] <= 0.5:
-            x0[i] = 1.2 + np.random.rand(1,)
+    while not right:
+        x0, xf = random_setup(n, 6, n_d=3, energy=n*2, var=n*1.5)
+        # Print for debugging
+        # print("x0:", x0)
+        # print("xf:", xf)
+        # print("min distance at x0:", compute_pairwise_distance(x0, [6] * n, 3).min())
+        # print("min distance at xf:", compute_pairwise_distance(xf, [6] * n, 3).min())
 
-        if xf[i] <= 0.5:
-            xf[i] = 1.1 + np.random.rand(1,)*0.5
+        for i in range(2, len(x0), 6):
+            if x0[i] <= 0.0:
+                x0[i] = 2.0 + np.random.rand(1,) * 1.5
 
+            if xf[i] <= 0.0:
+                xf[i] = 1.0 + np.random.rand(1,) * 0.5
+
+        if compute_pairwise_distance(x0, [6] * n, 3).min() > r_safety and compute_pairwise_distance(xf, [6] * n, 3).min() > r_safety:
+            right = True
+        else:
+            print("Conditions not satisfied. Retrying...")
 
     return x0, xf
-
-def setup_7_quads():
-
-    x0,xf = random_setup(7,6,n_d=3,energy=7,var=3.0)
-    
-    for i in range(2,len(x0),6):
-        if x0[i] <= 0.5:
-            x0[i] = 1.2 + np.random.rand(1,)
-
-        if xf[i] <= 0.5:
-            xf[i] = 1.1 + np.random.rand(1,)*0.5
-
-    return x0, xf
-
-def setup_8_quads():
-
-    x0,xf = random_setup(8,6,n_d=3,energy=8,var=3.0)
-    
-    for i in range(2,len(x0),6):
-        if x0[i] <= 0.5:
-            x0[i] = 1.2 + np.random.rand(1,)
-
-        if xf[i] <= 0.5:
-            xf[i] = 1.1 + np.random.rand(1,)*0.5
-
-    return x0, xf
-
-def setup_9_quads():
-    x0,xf = random_setup(9,6,n_d=3,energy=8,var=3.0)
-    
-    for i in range(2,len(x0),6):
-        if x0[i] <= 0.5:
-            x0[i] = 1.2 + np.random.rand(1,)
-
-        if xf[i] <= 0.5:
-            xf[i] = 1.1 + np.random.rand(1,)*0.5
-
-    return x0, xf
-
-def setup_10_quads():
-    x0,xf = random_setup(10,6,n_d=3,energy=10,var=3.0)
-    
-    for i in range(2,len(x0),6):
-        if x0[i] <= 0.5:
-            x0[i] = 1.2 + np.random.rand(1,)
-
-        if xf[i] <= 0.5:
-            xf[i] = 1.1 + np.random.rand(1,)*0.5
-
-    return x0, xf
-
 
 
 def objective(X, U, u_ref, xf, Q, R, Qf):
