@@ -5,7 +5,7 @@ from dynamics import *
 from time import perf_counter
 import logging
 
-"""This is centralized MPC without iterative consensus"""
+"""This is a vanilla centralized MPC demo without C-ADMM"""
 
 def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_trial = None):
 	SOVA_admm = 'centralized_mpc'
@@ -89,11 +89,6 @@ def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_tri
 						b_ij = cs.dot(a_ij, (agent_i_trj[:,k][:3] + agent_j_trj[:,k][:3])/2) + r_min/2
 						opti.subject_to(cs.dot(a_ij, p_i_next) >= b_ij )
       
-
-		#Terminal velocity constraint for recursive feasibility? Somehow this is not working... :
-		# for i in range(n_agents):
-			# opti.subject_to(Y_state[T*nx:(T+1)*nx][i*n_states:(i+1)*n_states][3:] == np.zeros((n_inputs,1)))
-	
 		X0 = opti.parameter(x0.shape[0],1)     
 		opti.subject_to(Y_state[0:nx] == X0)
 		
@@ -129,7 +124,7 @@ def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_tri
 		
 		iters += 1
 		t += dt
-		if iters > 100:
+		if iters > MAX_ITER:
 			converged = False
 			print(f'Max MPC iters reached; exiting MPC loops.....')
 			break

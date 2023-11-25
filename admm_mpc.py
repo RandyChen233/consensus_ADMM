@@ -2,18 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from casadi import *
 import casadi as cs
-import dpilqr
 from time import perf_counter
-import sys
-from logger import setup_logger_admm
 
 import logging
-from pathlib import Path
-import multiprocessing as mp
-from os import getpid
-import os
-from time import strftime
-
 from dynamics import *
 import util
 from multiprocessing import Process, Pipe
@@ -23,7 +14,7 @@ opts = {'error_on_fail':False}
 
 """To keep the code simple, peer-to-peer communication is not used"""
 
-def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, ADMM_ITER, n_trial=None):
+def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, ADMM_ITER, convex = True, n_trial=None):
 	SOVA_admm = False
 	nx = n_states*n_agents
 	nu = n_inputs*n_agents
@@ -54,14 +45,24 @@ def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MA
 		try:
 		
 			#Solve current MPC via consensus ADMM:
-			x_trj_converged, u_trj_converged, _, admm_time= solve_consensus(Ad, Bd,
-																			A_i,B_i,
-                                                                   			x_curr,
-																			u_curr,
-                                                                    		xr, Q, R, Qf,
-																			T, nx, nu,r_min,
-                                                                      		N, ADMM_ITER, mpc_iter, convex_problem = True,
-																			n_trial = None)
+			if convex:
+				x_trj_converged, u_trj_converged, _, admm_time= solve_consensus(Ad, Bd,
+																				A_i,B_i,
+																				x_curr,
+																				u_curr,
+																				xr, Q, R, Qf,
+																				T, nx, nu,r_min,
+																				N, ADMM_ITER, mpc_iter, convex_problem = True,
+																				n_trial = None)
+			else:
+				x_trj_converged, u_trj_converged, _, admm_time= solve_consensus_nonlinear(Ad, Bd,
+																				A_i,B_i,
+																				x_curr,
+																				u_curr,
+																				xr, Q, R, Qf,
+																				T, nx, nu,r_min,
+																				N, ADMM_ITER, mpc_iter, convex_problem = True,
+																				n_trial = None)
 			solve_times.append(admm_time)
 			
 			
@@ -71,12 +72,6 @@ def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MA
 			print('Error encountered in ADMM iterations !! Exiting...')
 			converged = False
 			obj_trj = np.inf
-			# logging.info(
-			# f'{n_trial},'
-			# f'{n_agents},{t},{converged},'
-			# f'{obj_trj},{T},{dt},{radius},{SOVA_admm},{np.mean(solve_times)},{np.std(solve_times)}, {MAX_ITER},'
-			# f'{dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)},'
-			# )
 			return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
 			
 		obj_history.append(float(util.objective(x_trj_converged.T, u_trj_converged.T, u_ref, xr, Q, R, Qf)))
@@ -94,19 +89,13 @@ def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MA
 			converged = False
 			break
 
-	print(f'Final distance to goal is {dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)}')
+	print(f'Final distance to goal is {util.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states)}')
 	
-	if np.all(dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3) <= 0.1):
+	if np.all(util.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states) <= 0.1):
 		converged = True
 
 	obj_trj = float(util.objective(X_full.T, U_full.T, u_ref, xr, Q, R, Qf))
 	
-	# logging.info(
-	# f'{n_trial},'
-	# f'{n_agents},{t},{converged},'
-	# f'{obj_trj},{T},{dt},{radius},{SOVA_admm},{np.mean(solve_times)},{np.std(solve_times)}, {MAX_ITER},'
-	# f'{dpilqr.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states, 3)},'
-	# )
 	
 	return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
 
@@ -126,7 +115,8 @@ def solve_consensus(Ad, Bd,
 	R = R[0:n_inputs,0:n_inputs]
 	Qf = Qf[0:n_states,0:n_states]
 	def run_worker(agent_id, pipe, x_curr):
-		opti = Opti('conic')
+		# opti = Opti('conic')
+		opti = Opti()
   
 		"Reference https://www.cvxpy.org/examples/applications/consensus_opt.html"
 		xbar = opti.parameter((T+1)*nx + T*nu)
@@ -137,8 +127,7 @@ def solve_consensus(Ad, Bd,
 		X0 = opti.parameter(x_curr[:n_states].shape[0],1)
 
 		# rho = 0.5
-		rho = 1
-		# rho = 10
+		rho = 0.5
 		f = 0 		#local cost
 		#Local quadratic tracking cost:
 		for t in range(T):
@@ -176,14 +165,34 @@ def solve_consensus(Ad, Bd,
 			opti.subject_to(U_curr <= np.array([2, 2, 2]))
 			opti.subject_to(np.array([-2, -2, -2]) <= U_curr)
 			
-			#Constrain velocity:
+			# Constrain velocity:
 			# for i in range(n_agents):
 			# 	opti.subject_to(X_curr[3:6] <= np.array([1.5, 1.5, 1.5]))
 			# 	opti.subject_to(np.array([-1.5, -1.5, -1.5]) <= X_curr[3:6])
-	
-			# Collision avoidance constraints via BVCs
-
+			
+			
 			i = agent_id
+			# Right hand rule deadlock avoidance 
+			# for j in range(n_agents):
+			# 	if j != i:
+
+			# 		pi_prev = x_curr[i*n_states:(i+1)*n_states][:3] 
+			# 		pj_prev = x_curr[j*n_states:(j+1)*n_states][:3]
+
+			# 		# Vector from p_j to p_i
+			# 		vec = pi_prev - pj_prev
+			# 		vec = vec.reshape(3,)
+			# 		# Check if p_j is on right of p_i
+			# 		if np.cross(vec, [0,0,1])[-1] >= 0:
+			# 			# Add constraint to move right
+			# 			opti.subject_to(X_next[0] >= X_curr[0]) 
+			# 			opti.subject_to(X_next[1] <= X_curr[1]) 
+			# 		else:
+			# 			# Add constraint to move left 
+			# 			opti.subject_to(X_next[0] <= X_curr[0])
+			# 			opti.subject_to(X_next[1] >= X_curr[1])
+   
+			# Collision avoidance constraints via BVCs:
 			agent_i_trj = forward_pass(A_i,
 										B_i,
 										T,
@@ -193,7 +202,6 @@ def solve_consensus(Ad, Bd,
 			p_i_next = X_curr[:3]
 			for j in range(n_agents):
 				if j != i:
-					# continue
 					agent_j_trj = forward_pass( A_i,
 												B_i,
 												T,
@@ -204,14 +212,28 @@ def solve_consensus(Ad, Bd,
 					b_ij = cs.dot(a_ij, (agent_i_trj[:,k][:3] + agent_j_trj[:,k][:3])/2) + r_min/2
 					opti.subject_to(cs.dot(a_ij, p_i_next) >= b_ij )
 
+			# agent_i_prev = x_curr[i*n_states:(i+1)*n_states][:3]
+			# p_i_next = X_curr[:3]
+			# for j in range(n_agents):
+			# 	if j != i:
+			# 		agent_j_prev = x_curr[j*n_states:(j+1)*n_states][:3]
 
+			# 		a_ij  =  (agent_i_prev-agent_j_prev)/cs.norm_2(agent_i_prev -agent_j_prev)
+			# 		b_ij = cs.dot(a_ij, (agent_i_prev + agent_j_prev)/2) + r_min/2
+			# 		opti.subject_to(cs.dot(a_ij, p_i_next) >= b_ij )
+     
+		#Terminal input constraint for recursive feasibility:
+		# U_f = states[(T+1)*nx:][(T-1)*nu:T*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
+		# opti.subject_to(U_f[:3]== np.zeros(3))
+  
 		# ADMM loop
 		iters = 0
-		opti.solver("osqp",opts)
+		# opti.solver("osqp",opts)
+		opti.solver("ipopt",opts)
 
 		opti.minimize(f)
 		opti.set_value(X0,x_curr[agent_id*n_states:(agent_id+1)*n_states])
-		
+
 		while True:
 			try:    
 				sol = opti.solve()
@@ -224,9 +246,9 @@ def solve_consensus(Ad, Bd,
 				pipe.send(sol.value(states - xbar))
 				pipe.send(sol.value(f-(rho/2)*sumsqr(sol.value(states - xbar + u)))) #This step is not part of the ADMM algorithm; only used for data logging!
 				iters += 1
-				sol_prev = sol
-				if iters > 0:
-					opti.set_initial(sol_prev.value_variables())
+				# sol_prev = sol
+				# if iters > 0:
+					# opti.set_initial(sol_prev.value_variables())
 			except EOFError:
 				print("Connection closed.")
 				print(opti.debug.value)
@@ -244,13 +266,13 @@ def solve_consensus(Ad, Bd,
 	# x_bar_history = [np.zeros((nx, 1))] #Recording how the averaged value x_bar evolves
 	iter = 0
 	t0 = perf_counter()
+ 
 	"""Execute ADMM loop in parallel:"""
 	converged = False
 	residual_list = [np.inf] #dual residuals
-	
-	primal_residual = []
+	primal_residual = [] #primal residuals
 	while not converged:
-		# Gather and average Y_i
+		# Gather and average 
 		x_all = [pipe.recv() for pipe in pipes]
 		res = [np.linalg.norm(x_all[j] - x_all[i]) for i in range(len(x_all)) for j in range(i+1, len(x_all))]
 		primal_residual.append(sum(res)/N)
@@ -266,7 +288,7 @@ def solve_consensus(Ad, Bd,
 
 		residual = np.linalg.norm(sum(pipe.recv() for pipe in pipes)/N)
 		residual_list.append(residual)
-		print(f'Current residual is {residual}')
+		# print(f'Current residual is {residual}')
 		objective_val = sum(pipe.recv() for pipe in pipes)/N
 
 		logging.info(
@@ -293,7 +315,6 @@ def solve_consensus(Ad, Bd,
 	u_trj_converged = solution_list[-1][(T+1)*nx:].reshape((T,nu))
 	
 	return x_trj_converged, u_trj_converged, solution_list, admm_iter_time
-
 
 
 def solve_consensus_nonlinear(Ad, Bd,
@@ -374,6 +395,8 @@ def solve_consensus_nonlinear(Ad, Bd,
 					p_ij = p_j - p_i
 					opti.subject_to(sqrt(p_ij[0]**2 + p_ij[1]**2 + p_ij[2]**2 + 0.001) >= 2*r_min)
 
+		# U_f = states[(T+1)*nx:][(T-1)*nu:T*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
+		# opti.subject_to(U_f[:3]== np.zeros(3))
 		# ADMM loop
 		iters = 0
 		opti.solver("ipopt",opts)

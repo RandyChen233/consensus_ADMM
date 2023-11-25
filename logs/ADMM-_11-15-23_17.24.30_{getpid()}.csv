@@ -1,2 +1,0 @@
-agent_id, n_trial, n_agents, iters, cost
-None,3,0,False,inf,10,0.1,0.3,False,inf,nan, 100,[2.022 2.04  0.922],

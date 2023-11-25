@@ -32,7 +32,7 @@ def setup_logger_admm():
     print(f"Logging results to {LOG_FILE}")
     logging.basicConfig(filename=LOG_FILE, format="%(message)s", level=logging.INFO)
     logging.info(
-        "agent_id, n_trial, n_agents, iters, cost"
+        "convex,n_trial,n_agents,iters,mpc_iter,obj_value,dual_res,primal_res"
     )
     
     

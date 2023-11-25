@@ -16,18 +16,22 @@ from dynamics import *
 import util
 from admm_mpc import *
 from mpc import *
+from logger import *
+from util import *
 
 if __name__ == "__main__":
     convex = True
     
-    x0,xr = util.paper_setup_3_quads()
-    # x0,xr = util.setup_5_quads()
-    # x0, xr = util.setup_10_quads()
+    # x0,xr = util.paper_setup_5_quads()
+    # x0,xr = util.paper_setup_3_quads()
+    x0, xr = util.setup_n_quads(3)
+    # x0,xr = util.setup_10_quads()
+    
     T = 10 # MPC horizon length
     radius = 0.3
     n_states = 6
     n_inputs = 3
-    n_agents = 10
+    n_agents = 3
     ids = [100+n for n in range(n_agents)]
     Q = np.eye(n_states*n_agents)*1
     for i in range(n_agents):
@@ -39,20 +43,54 @@ if __name__ == "__main__":
     # ADMM_ITER = 5
     MPC_ITER = 100
     setup_logger_admm()
+    # n_agents_iter = [3, 10, 15]
+    # for n_agents in n_agents_iter:
+    #     radius = 0.3
+    #     n_states = 6
+    #     n_inputs = 3
+    #     ids = [100+n for n in range(n_agents)]
+    #     Q = np.eye(n_states*n_agents)*1
+    #     for i in range(n_agents):
+    #         Q[i*n_states:(i+1)*n_states][0:3] = 5
+        
+    #     R = np.eye(n_inputs*n_agents)*0.1
+    #     Qf = Q*100
+        
+    #     if n_agents > 5:
+    #         radius = 0.2
+        
+    #     x0, xr = globals()[f'setup_{n_agents}_quads']()
+        
     X_full, U_full, obj_trj, mean_time, obj_history = solve_admm_mpc(n_states, 
-                                                                     n_inputs, 
-                                                                     n_agents, 
-                                                                     x0, 
-                                                                     xr, 
-                                                                     T, 
-                                                                     radius, 
-                                                                     Q, 
-                                                                     R, 
-                                                                     Qf, 
-                                                                     MPC_ITER,
-                                                                     ADMM_ITER, n_trial=None)
+                                                                    n_inputs, 
+                                                                    n_agents, 
+                                                                    x0, 
+                                                                    xr, 
+                                                                    T, 
+                                                                    radius, 
+                                                                    Q, 
+                                                                    R, 
+                                                                    Qf, 
+                                                                    MPC_ITER,
+                                                                    ADMM_ITER, convex = True, n_trial=None)
     
-    np.savez("admm_consensus_BVC_convex_{}.npz".format(n_agents), X_full=X_full, obj_trj=obj_trj, obj_hist = obj_history, xr=xr)
+    np.savez("admm_consensus_BVC_convex_{}.npz".format(n_agents), X_full=X_full, obj_trj=obj_trj, obj_hist = obj_history, xr=xr, x0 = x0)
+    
+    X_full, U_full, obj_trj, mean_time, obj_history = solve_admm_mpc(n_states, 
+                                                                    n_inputs, 
+                                                                    n_agents, 
+                                                                    x0, 
+                                                                    xr, 
+                                                                    T, 
+                                                                    radius, 
+                                                                    Q, 
+                                                                    R, 
+                                                                    Qf, 
+                                                                    MPC_ITER,
+                                                                    ADMM_ITER, convex = False, n_trial=None)
+    np.savez("admm_consensus_BVC_nonconvex_{}.npz".format(n_agents), X_full=X_full, obj_trj=obj_trj, obj_hist = obj_history, xr=xr, x0 = x0)
+    
+    
     
     # X_trj, U_trj, obj_trj, mean_times, obj_hist = solve_mpc_centralized(n_agents,
     #                                                                     x0, xr, 

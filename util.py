@@ -222,7 +222,8 @@ def setup_n_quads(n):
 
             if xf[i] <= 0.0:
                 xf[i] = 1.0 + np.random.rand(1,) * 0.5
-
+                
+            
         if compute_pairwise_distance(x0, [6] * n, 3).min() > r_safety and compute_pairwise_distance(xf, [6] * n, 3).min() > r_safety:
             right = True
         else:
