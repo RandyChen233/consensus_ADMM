@@ -134,6 +134,59 @@ def random_setup(
 
     return x0, xf
 
+def setup_n_quads_V2(n_quads,r_safety):
+    
+    x0,v0 = set_random(n_quads,r_safety,False)
+    x_0 = np.zeros((6*n_quads,))
+    for agent,(pos,vel) in enumerate(zip(x0,v0)):
+        x_0[agent*6:(agent+1)*6] = np.hstack((pos,vel))
+    x_0 = x_0.reshape(-1,1)
+    
+    xf,vf = set_random(n_quads,r_safety,True)
+    x_f = np.zeros((6*n_quads,))
+    for agent,(pos_f,vel_f) in enumerate(zip(xf,vf)):
+        x_f[agent*6:(agent+1)*6] = np.hstack((pos_f,vel_f))
+    x_f = x_f.reshape(-1,1)
+    return x_0, x_f
+
+def set_random(n_quads, r_safety, target):
+
+    for times in range(100):
+        ini_x=[]
+        for i in range(n_quads):
+            for j in range(1000): 
+                ini=np.random.rand(3)*np.array([3.5,3.5,2.5])
+                RIGHT=True
+            
+                for k in range(len(ini_x)):
+                    if target:
+                        if(np.linalg.norm(ini-ini_x[k])<r_safety+0.1):
+                            RIGHT=False 
+                    else:
+                        if(np.linalg.norm(ini-ini_x[k])<r_safety+0.05):
+                            RIGHT=False 
+                
+                if RIGHT:
+                    ini_x+=[ini]
+                    break 
+
+        if len(ini_x)==n_quads:
+            print("positions retrieved")
+            break 
+        
+        if (times+1)%10==0:
+            print('Try %s times, cannot find. Keep trying.'%(times+1))
+
+    if times == 99:
+        print('please decrease the number of robots')
+
+
+    ini_v=[]
+    for i in range(n_quads):
+        ini_v+=[np.zeros(3)] 
+        
+    return ini_x, ini_v
+
 
 def compute_energy(x, x_dims, n_d=2):
     """Determine the sum of distances from the origin"""
@@ -204,8 +257,8 @@ def paper_setup_5_quads(random = False):
     return x0, xf
 
 
-def setup_n_quads(n):
-    r_safety = 0.3 * 2
+def setup_n_quads(n, r_safety):
+        
     right = False
     
     while not right:

@@ -21,17 +21,16 @@ from util import *
 
 if __name__ == "__main__":
     convex = True
-    
-    # x0,xr = util.paper_setup_5_quads()
-    # x0,xr = util.paper_setup_3_quads()
-    x0, xr = util.setup_n_quads(3)
-    # x0,xr = util.setup_10_quads()
-    
-    T = 10 # MPC horizon length
     radius = 0.3
+    # x0,xr = util.paper_setup_5_quads()
+    x0,xr = util.paper_setup_3_quads()
+
+    # x0,xr = util.setup_n_quads_V2(5,2*radius)
+    
+    T = 12 # MPC horizon length
     n_states = 6
     n_inputs = 3
-    n_agents = 3
+    n_agents = 3 #Change this accordingly
     ids = [100+n for n in range(n_agents)]
     Q = np.eye(n_states*n_agents)*1
     for i in range(n_agents):
@@ -41,25 +40,8 @@ if __name__ == "__main__":
     Qf = Q*100
     ADMM_ITER = 100
     # ADMM_ITER = 5
-    MPC_ITER = 100
+    MPC_ITER = 300
     setup_logger_admm()
-    # n_agents_iter = [3, 10, 15]
-    # for n_agents in n_agents_iter:
-    #     radius = 0.3
-    #     n_states = 6
-    #     n_inputs = 3
-    #     ids = [100+n for n in range(n_agents)]
-    #     Q = np.eye(n_states*n_agents)*1
-    #     for i in range(n_agents):
-    #         Q[i*n_states:(i+1)*n_states][0:3] = 5
-        
-    #     R = np.eye(n_inputs*n_agents)*0.1
-    #     Qf = Q*100
-        
-    #     if n_agents > 5:
-    #         radius = 0.2
-        
-    #     x0, xr = globals()[f'setup_{n_agents}_quads']()
         
     X_full, U_full, obj_trj, mean_time, obj_history = solve_admm_mpc(n_states, 
                                                                     n_inputs, 
