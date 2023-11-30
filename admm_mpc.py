@@ -108,12 +108,12 @@ def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MP
 
 
 def solve_consensus(Ad, Bd,
-                    A_i,B_i,
-                    x_curr,
-                    u_curr, 
-                    xr, Q, R, Qf, 
-                    T, nx, nu, r_min,
-                    N, ADMM_ITER, mpc_iter, convex_problem, n_trial):
+					A_i,B_i,
+					x_curr,
+					u_curr, 
+					xr, Q, R, Qf, 
+					T, nx, nu, r_min,
+					N, ADMM_ITER, mpc_iter, convex_problem, n_trial):
 	convex = True
 	n_agents = N
 	n_states = 6
@@ -122,8 +122,8 @@ def solve_consensus(Ad, Bd,
 	R = R[0:n_inputs,0:n_inputs]
 	Qf = Qf[0:n_states,0:n_states]
 	def run_worker(agent_id, pipe, x_curr):
-		opti = Opti('conic')
-		# opti = Opti()
+		# opti = Opti('conic')
+		opti = Opti()
   
 		"Reference https://www.cvxpy.org/examples/applications/consensus_opt.html"
 		xbar = opti.parameter((T+1)*nx + T*nu)
@@ -154,7 +154,7 @@ def solve_consensus(Ad, Bd,
 			state_ref = xr[agent_id*n_states:(agent_id+1)*n_states]
 			f += (states_T[idf] - state_ref[idf]) * Qf[idf,idf] * (states_T[idf] - state_ref[idf])
 	
-     
+	 
 		"""Reference: https://www.cvxpy.org/examples/applications/consensus_opt.html"""
 		#Augmented cost :
 		f += (rho/2)*sumsqr(states - xbar + u) 
@@ -208,15 +208,15 @@ def solve_consensus(Ad, Bd,
 			# 		a_ij  =  (agent_i_prev-agent_j_prev)/cs.norm_2(agent_i_prev -agent_j_prev)
 			# 		b_ij = cs.dot(a_ij, (agent_i_prev + agent_j_prev)/2) + r_min/2
 			# 		opti.subject_to(cs.dot(a_ij, p_i_next) >= b_ij )
-     
+	 
 		#Terminal input constraint for recursive feasibility:
 		U_f = states[(T+1)*nx:][(T-1)*nu:T*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
 		opti.subject_to(U_f[:3]== np.zeros(3))
 
 		# ADMM loop
 		iters = 0
-		opti.solver("osqp",opts)
-		# opti.solver("ipopt",opts)
+		# opti.solver("osqp",opts)
+		opti.solver("ipopt",opts)
 
 		opti.minimize(f)
 		opti.set_value(X0,x_curr[agent_id*n_states:(agent_id+1)*n_states])
@@ -255,14 +255,15 @@ def solve_consensus(Ad, Bd,
 	"""Execute ADMM loop in parallel:"""
 	converged = False
 	residual_list = [np.inf] #dual residuals
-	primal_residual = [] #primal residuals
+	primal_residual = [np.inf] #primal residuals
 	objective_val_list = []
 	
 	while not converged:
+		iter += 1
 		# Gather and average \theta^i
 		x_all = [pipe.recv() for pipe in pipes]
 		res = [np.linalg.norm(x_all[j] - x_all[i]) for i in range(len(x_all)) for j in range(i+1, len(x_all))]
-		primal_residual.append(sum(res)/N)
+		primal_residual.append(sum(res)/N) #Mean sqaured residuals 
 				
 		xbar = sum(x_all)/N
 		# xbar = sum(pipe.recv() for pipe in pipes)/N
@@ -270,21 +271,23 @@ def solve_consensus(Ad, Bd,
 		# Scatter xbar
 		for pipe in pipes:
 			pipe.send(xbar)
-		iter += 1
 
-		residual = np.linalg.norm(sum(pipe.recv() for pipe in pipes)/N)
-		residual_list.append(residual)
+		dual_res_all = [pipe.recv() for pipe in pipes]
+		dual_res = [np.linalg.norm(dual_res_all[j]) for j in range(len(dual_res_all))]
+		residual_list.append(sum(dual_res)/N) #Mean sqaured residuals 
 		# print(f'Current residual is {residual}')
 		objective_val = sum(pipe.recv() for pipe in pipes)
 		objective_val_list.append(objective_val)	
+
 		logging.info(
 					f'{convex},{n_trial},'
 					f'{n_agents},{iter},{mpc_iter},{objective_val},'
-					f'{residual_list[iter]-residual_list[iter-1]},{primal_residual[iter-1]},'
+					f'{residual_list[iter]},{primal_residual[iter]},'
 					)
 		
 		#Specify a dual convergence criterion (||r_{k+1}-r_{k}|| <= eps)
-		if abs(residual_list[iter]-residual_list[iter-1]) <= 0.005 and iter >=10:
+		# if abs(residual_list[iter]-residual_list[iter-1]) <= 0.005 and iter >=10:
+		if abs(residual_list[iter]) <= 0.005 and primal_residual[iter] <= 0.005 and iter >=10:
 			converged = True
 			print(f'Current ADMM updates converged at the {iter}th iter\n')
 			break
@@ -292,30 +295,25 @@ def solve_consensus(Ad, Bd,
 		if iter > ADMM_ITER:
 			print(f'Max ADMM iterations reached!\n')
 			break
-			
-		
+
 	admm_iter_time = perf_counter() - t0  
 	[p.terminate() for p in procs]
-	# states = opti.variable((T+1)*nx + T* nu)
+ 
 	state_trj_curr = [x_all[i][:(T+1)*nx].reshape((T+1, nx))[1,i*n_states:(i+1)*n_states] for i in range(N)]
 	input_trj_curr = [x_all[i][(T+1)*nx:].reshape((T, nu))[0,i*n_inputs:(i+1)*n_inputs] for i in range(N)]
 
 	state_curr = np.concatenate(state_trj_curr)
 	input_curr = np.concatenate(input_trj_curr)
-	# x_trj_converged = solution_list[-1][:(T+1)*nx].reshape((T+1,nx))
-	# u_trj_converged = solution_list[-1][(T+1)*nx:].reshape((T,nu))
-		
- 
+
 	return state_curr, input_curr,  admm_iter_time, objective_val_list[-1]
 
-
 def solve_consensus_nonlinear(Ad, Bd,
-                    A_i,B_i,
-                    x_curr,
-                    u_curr, 
-                    xr, Q, R, Qf, 
-                    T, nx, nu, r_min,
-                    N, ADMM_ITER, mpc_iter, convex_problem, n_trial):
+					A_i,B_i,
+					x_curr,
+					u_curr, 
+					xr, Q, R, Qf, 
+					T, nx, nu, r_min,
+					N, ADMM_ITER, mpc_iter, convex_problem, n_trial):
 	convex = False
 	n_agents = N
 	n_states = 6
@@ -354,7 +352,7 @@ def solve_consensus_nonlinear(Ad, Bd,
 			states_T = states[T*nx:(T+1)*nx][agent_id*n_states:(agent_id+1)*n_states]
 			state_ref = xr[agent_id*n_states:(agent_id+1)*n_states]
 			f += (states_T[idf] - state_ref[idf]) * Qf[idf,idf] * (states_T[idf] - state_ref[idf])
-     
+	 
 		"""Reference: https://www.cvxpy.org/examples/applications/consensus_opt.html"""
 		#Augmented cost :
 		f += (rho/2)*sumsqr(states - xbar + u) 
@@ -387,8 +385,8 @@ def solve_consensus_nonlinear(Ad, Bd,
 					p_ij = p_j - p_i
 					opti.subject_to(sqrt(p_ij[0]**2 + p_ij[1]**2 + p_ij[2]**2 + 0.001) >= 2*r_min)
 
-		# U_f = states[(T+1)*nx:][(T-1)*nu:T*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
-		# opti.subject_to(U_f[:3]== np.zeros(3))
+		U_f = states[(T+1)*nx:][(T-1)*nu:T*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
+		opti.subject_to(U_f[:3]== np.zeros(3))
 		# ADMM loop
 		iters = 0
 		opti.solver("ipopt",opts)
@@ -427,34 +425,38 @@ def solve_consensus_nonlinear(Ad, Bd,
 	"""Execute ADMM loop in parallel:"""
 	converged = False
 	residual_list = [np.inf] #dual residuals
-	primal_residual = [] #primal residuals
+	primal_residual = [np.inf] #primal residuals
 	objective_val_list = []
 	while not converged:
+		iter += 1
 		# Gather and average \theta^i
 		x_all = [pipe.recv() for pipe in pipes]
 		res = [np.linalg.norm(x_all[j] - x_all[i]) for i in range(len(x_all)) for j in range(i+1, len(x_all))]
-		primal_residual.append(sum(res)/N)
+		primal_residual.append(sum(res)/N) #Mean sqaured residuals 
 				
 		xbar = sum(x_all)/N
-
+		# xbar = sum(pipe.recv() for pipe in pipes)/N
+		# solution_list.append(xbar)
 		# Scatter xbar
 		for pipe in pipes:
 			pipe.send(xbar)
-		iter += 1
 
-		residual = np.linalg.norm(sum(pipe.recv() for pipe in pipes)/N)
-		residual_list.append(residual)
-
+		dual_res_all = [pipe.recv() for pipe in pipes]
+		dual_res = [np.linalg.norm(dual_res_all[j]) for j in range(len(dual_res_all))]
+		residual_list.append(sum(dual_res)/N) #Mean sqaured residuals 
+		# print(f'Current residual is {residual}')
 		objective_val = sum(pipe.recv() for pipe in pipes)
-		objective_val_list.append(objective_val)
+		objective_val_list.append(objective_val)	
+
 		logging.info(
 					f'{convex},{n_trial},'
 					f'{n_agents},{iter},{mpc_iter},{objective_val},'
-					f'{residual_list[iter]-residual_list[iter-1]},{primal_residual[iter-1]},'
+					f'{residual_list[iter]},{primal_residual[iter]},'
 					)
 		
 		#Specify a dual convergence criterion (||r_{k+1}-r_{k}|| <= eps)
-		if abs(residual_list[iter]-residual_list[iter-1]) <= 0.005 and iter >=10:
+		# if abs(residual_list[iter]-residual_list[iter-1]) <= 0.005 and iter >=10:
+		if abs(residual_list[iter]) <= 0.005 and primal_residual[iter] <= 0.005 and iter >=10:
 			converged = True
 			print(f'Current ADMM updates converged at the {iter}th iter\n')
 			break
@@ -462,8 +464,7 @@ def solve_consensus_nonlinear(Ad, Bd,
 		if iter > ADMM_ITER:
 			print(f'Max ADMM iterations reached!\n')
 			break
-			
-		
+
 	admm_iter_time = perf_counter() - t0  
 	[p.terminate() for p in procs]
 	# states = opti.variable((T+1)*nx + T* nu)
@@ -474,5 +475,6 @@ def solve_consensus_nonlinear(Ad, Bd,
 	input_curr = np.concatenate(input_trj_curr)
 	# x_trj_converged = solution_list[-1][:(T+1)*nx].reshape((T+1,nx))
 	# u_trj_converged = solution_list[-1][(T+1)*nx:].reshape((T,nu))
-	
+		
+ 
 	return state_curr, input_curr,  admm_iter_time, objective_val_list[-1]
