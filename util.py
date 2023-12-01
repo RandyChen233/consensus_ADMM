@@ -20,9 +20,10 @@ def plot_solve(X, J, x_goal, x_dims=None, color_agents=False, n_d=2, ax=None):
     if not ax:
         if n_d == 2:
             ax = plt.gca()
+            
         else:
             ax = plt.gcf().add_subplot(projection="3d")
-
+            ax.set_box_aspect([1.5, 1.5, 1])
     N = X.shape[0]
     n = np.arange(N)
     cm = plt.cm.Set2
@@ -155,9 +156,16 @@ def set_random(n_quads, r_safety, target):
         ini_x=[]
         for i in range(n_quads):
             for j in range(1000): 
-                ini=np.random.rand(3)*np.array([3.5,3.5,2.5])
-                RIGHT=True
-            
+                if n_quads <= 10:
+                    ini=np.random.rand(3)*np.array([3.5,3.5,2.5])  
+                      
+                elif n_quads > 10 and n_quads <20:
+                    ini=np.random.rand(3)*np.array([7, 7, 3.0])  
+                    
+                elif n_quads >= 20 and n_quads <50:
+                    ini=np.random.rand(3)*np.array([15,15,3.5])  
+                    
+                RIGHT=True      
                 for k in range(len(ini_x)):
                     if target:
                         if(np.linalg.norm(ini-ini_x[k])<r_safety+0.1):

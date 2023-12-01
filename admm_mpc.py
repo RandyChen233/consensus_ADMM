@@ -134,7 +134,6 @@ def solve_consensus(Ad, Bd,
 		X0 = opti.parameter(x_curr[:n_states].shape[0],1)
 
 		rho = 0.5
-		# rho = 1.0
 		f = 0 		#local cost
 		#Local quadratic tracking cost:
 		for t in range(T):
@@ -444,8 +443,8 @@ def solve_consensus_nonlinear(Ad, Bd,
 		dual_res_all = [pipe.recv() for pipe in pipes]
 		dual_res = [np.linalg.norm(dual_res_all[j]) for j in range(len(dual_res_all))]
 		residual_list.append(sum(dual_res)/N) #Mean sqaured residuals 
-		# print(f'Current residual is {residual}')
-		objective_val = sum(pipe.recv() for pipe in pipes)
+
+		objective_val = sum(pipe.recv() for pipe in pipes) #Global objective function (=sum of local objectives)
 		objective_val_list.append(objective_val)	
 
 		logging.info(
