@@ -38,7 +38,7 @@ if __name__ == "__main__":
     Qf = Q*100
     ADMM_ITER = 100
     # ADMM_ITER = 5
-    MPC_ITER = 300
+    MPC_ITER = 100
     setup_logger_admm()
         
     X_full, U_full, obj_trj, mean_time, obj_history = solve_admm_mpc(n_states, 

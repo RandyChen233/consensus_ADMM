@@ -13,7 +13,6 @@ from multiprocessing import Process, Pipe
 opts = {'error_on_fail':False}
 
 """To keep the code simple, peer-to-peer communication is not used"""
-
 def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MPC_ITER, ADMM_ITER, convex = True, n_trial=None):
 	SOVA_admm = False
 	nx = n_states*n_agents
@@ -53,7 +52,7 @@ def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MP
 															xr, Q, R, Qf,
 															T, nx, nu,r_min,
 															N, ADMM_ITER, mpc_iter, convex_problem = True,
-															n_trial = None)
+															n_trial = n_trial)
 			else:
 				state_curr, input_curr,  admm_time, obj_curr = solve_consensus_nonlinear(Ad, Bd,
 																				A_i,B_i,
@@ -62,17 +61,18 @@ def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MP
 																				xr, Q, R, Qf,
 																				T, nx, nu,r_min,
 																				N, ADMM_ITER, mpc_iter, convex_problem = True,
-																				n_trial = None)
+																				n_trial = n_trial)
 			solve_times.append(admm_time)
 			
 			
-		except EOFError or RuntimeError:
+		except (EOFError, RuntimeError) as e:
 			admm_time = np.inf
 			solve_times.append(admm_time)
 			print('Error encountered in ADMM iterations !! Exiting...')
 			converged = False
 			obj_trj = np.inf
-			return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
+			# return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
+			break
 			
 		obj_history.append(float(obj_curr))
 	
@@ -207,7 +207,7 @@ def solve_consensus(Ad, Bd,
 			# 		a_ij  =  (agent_i_prev-agent_j_prev)/cs.norm_2(agent_i_prev -agent_j_prev)
 			# 		b_ij = cs.dot(a_ij, (agent_i_prev + agent_j_prev)/2) + r_min/2
 			# 		opti.subject_to(cs.dot(a_ij, p_i_next) >= b_ij )
-	 
+
 		#Terminal input constraint for recursive feasibility:
 		U_f = states[(T+1)*nx:][(T-1)*nu:T*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
 		opti.subject_to(U_f[:3]== np.zeros(3))
@@ -234,9 +234,9 @@ def solve_consensus(Ad, Bd,
 				# sol_prev = sol
 				# if iters > 0:
 					# opti.set_initial(sol_prev.value_variables())
-			except EOFError:
+			except (EOFError, RuntimeError) as e:
 				print("Connection closed.")
-				print(opti.debug.value)
+				# print(opti.debug.value)
 				break
 				 
 	pipes = []
@@ -406,7 +406,7 @@ def solve_consensus_nonlinear(Ad, Bd,
 				pipe.send(sol.value(f-(rho/2)*sumsqr(sol.value(states - xbar + u)))) #this step is not part of the algorithm; used solely for logging data !
 				iters += 1
 				
-			except EOFError:
+			except (EOFError, RuntimeError) as e:
 				print("Connection closed.")
 				break
 				 
