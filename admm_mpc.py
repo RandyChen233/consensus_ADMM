@@ -71,8 +71,8 @@ def solve_admm_mpc(n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MP
 			print('Error encountered in ADMM iterations !! Exiting...')
 			converged = False
 			obj_trj = np.inf
-			# return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
-			break
+			return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
+			# break
 			
 		obj_history.append(float(obj_curr))
 	
@@ -170,6 +170,10 @@ def solve_consensus(Ad, Bd,
 			#Constrain the acceleration vector
 			opti.subject_to(U_curr <= np.array([2, 2, 2]))
 			opti.subject_to(np.array([-2, -2, -2]) <= U_curr)
+   
+			#Constraint on the position
+			# opti.subject_to(X_curr[:3] <= np.array([3.5, 3.5, 2.5]))
+			# opti.subject_to(np.array([0, 0, 0]) <= X_curr[:3])
 			
 			# Constrain velocity:
 			# for i in range(n_agents):
@@ -234,9 +238,14 @@ def solve_consensus(Ad, Bd,
 				# sol_prev = sol
 				# if iters > 0:
 					# opti.set_initial(sol_prev.value_variables())
-			except (EOFError, RuntimeError) as e:
+			except EOFError:
 				print("Connection closed.")
-				# print(opti.debug.value)
+				# pass
+				print('EOFError')
+				break
+
+			except RuntimeError:
+				print('RuntimeError')
 				break
 				 
 	pipes = []
@@ -369,6 +378,9 @@ def solve_consensus_nonlinear(Ad, Bd,
 			# Constrain the acceleration vector
 			opti.subject_to(U_curr <= np.array([2, 2, 2]))
 			opti.subject_to(np.array([-2, -2, -2]) <= U_curr)
+   
+			# opti.subject_to(X_next[:3] <= np.array([3.5, 3.5, 2.5]))
+			# opti.subject_to(np.array([0, 0, 0]) <= X_next[:3])
 			
 			# #Constrain velocity:
 			# for i in range(n_agents):
@@ -409,6 +421,7 @@ def solve_consensus_nonlinear(Ad, Bd,
 			except (EOFError, RuntimeError) as e:
 				print("Connection closed.")
 				break
+				# pass
 				 
 	pipes = []
 	procs = []

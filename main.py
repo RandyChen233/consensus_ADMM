@@ -22,13 +22,13 @@ from util import *
 if __name__ == "__main__":
     convex = True
     radius = 0.3
-    # x0,xr = util.paper_setup_3_quads()
-    x0,xr = util.setup_n_quads_V2(7,2*radius)
+    x0,xr = util.paper_setup_5_quads()
+    # x0,xr = util.setup_n_quads_V2(5,2*radius)
     
     T = 10 # MPC horizon length
     n_states = 6
     n_inputs = 3
-    n_agents = 7 #Change this accordingly
+    n_agents = 5 #Change this accordingly
     ids = [100+n for n in range(n_agents)]
     Q = np.eye(n_states*n_agents)*1
     for i in range(n_agents):

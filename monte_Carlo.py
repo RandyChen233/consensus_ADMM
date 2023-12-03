@@ -27,7 +27,7 @@ if __name__ == "__main__":
     # n_agents = [3]
     n_agents =  [5]
     
-    n_trials_iters = range(40)
+    n_trials_iters = range(6,40)
     for n_quads in n_agents:
         for n_trial in n_trials_iters:     
             x0,xr = util.setup_n_quads_V2(n_quads,2*radius)
