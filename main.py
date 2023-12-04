@@ -23,7 +23,6 @@ if __name__ == "__main__":
     convex = True
     radius = 0.3
     x0,xr = util.paper_setup_5_quads()
-    # x0,xr = util.setup_n_quads_V2(5,2*radius)
     
     T = 10 # MPC horizon length
     n_states = 6

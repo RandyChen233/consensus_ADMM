@@ -388,7 +388,6 @@ def solve_consensus_nonlinear(Ad, Bd,
 			# 	opti.subject_to(np.array([-1.5, -1.5, -1.5]) <= X_curr[3:6])
 	
 			# Collision avoidance constraints
-			# if agent_id == 0:
 			p_i = states[:(T+1)*nx][(k+1)*nx:(k+2)*nx][agent_id*n_states:(agent_id+1)*n_states][:3]
 			for j in range(n_agents):
 				if j != agent_id:
@@ -418,10 +417,15 @@ def solve_consensus_nonlinear(Ad, Bd,
 				pipe.send(sol.value(f-(rho/2)*sumsqr(sol.value(states - xbar + u)))) #this step is not part of the algorithm; used solely for logging data !
 				iters += 1
 				
-			except (EOFError, RuntimeError) as e:
+			except EOFError:
 				print("Connection closed.")
-				break
 				# pass
+				print('EOFError')
+				break
+
+			except RuntimeError:
+				print('RuntimeError')
+				break
 				 
 	pipes = []
 	procs = []
