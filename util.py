@@ -233,13 +233,13 @@ def pos_mask(x_dims, n_d=2):
 
 def paper_setup_3_quads(random = False):
     
-    x0 = np.array([[0.5, 1.5, 1.2, 0, 0, 0,
+    x0 = np.array([[0.2, 1.5, 1.2, 0, 0, 0,
                     2.5, 1.5, 1.3, 0, 0, 0,
-                    1.5, 1.3, 0.8, 0, 0, 0]], 
+                    -0.8, 1.3, 0.8, 0, 0, 0]], 
                      dtype=float).T
     xf = np.array([[2.5, 1.5, 1.5, 0, 0, 0, 
-                    0.5, 1.5, 1.7, 0, 0, 0, 
-                    1.5, 2.2, 1.0, 0, 0, 0]]).T
+                    0.2, 1.5, 1.9, 0, 0, 0, 
+                    1.7, 1.3, 1.2, 0, 0, 0]]).T
     if random == True:
         x0[pos_mask([6]*3, 3)] += 0.05*np.random.randn(9, 1)
         xf[pos_mask([6]*3, 3)] += 0.05*np.random.randn(9, 1)
