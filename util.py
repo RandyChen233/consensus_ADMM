@@ -416,3 +416,5 @@ def compute_pairwise_distance(X, x_dims, n_d=3):
     dX = X_agent[:n_d, pair_inds[:, 0]] - X_agent[:n_d, pair_inds[:, 1]]
     
     return np.linalg.norm(dX, axis=0).T
+
+
