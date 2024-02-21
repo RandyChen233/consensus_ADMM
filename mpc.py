@@ -7,10 +7,15 @@ import logging
 
 """This is a vanilla centralized MPC demo without C-ADMM"""
 
+
+
+"""Linear quadratic MPC, centralized"""
 def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_trial = None):
 	SOVA_admm = 'centralized_mpc'
-	nx = n_agents * 6
-	nu = n_agents * 3
+	n_states = 6
+	n_inputs = 3
+	nx = n_agents * n_states
+	nu = n_agents * n_inputs
 	N = n_agents
 	opti = Opti('conic')
 	Y_state = opti.variable((T+1)*nx + T*nu)
@@ -45,8 +50,6 @@ def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_tri
 	
 	x_dims = [6]*N
 	n_dims = [3]*N
-	n_inputs = 3
-	n_states = 6
 	r_min = 2*radius
 	
 	Ad,Bd = linear_kinodynamics(dt,n_agents)
@@ -144,3 +147,92 @@ def solve_mpc_centralized(n_agents, x0, xr, T, radius, Q, R, Qf, MAX_ITER, n_tri
 	print(f'Distance to goal is {util.distance_to_goal(X_trj[-1].flatten(), xr.flatten(), n_agents, n_states)}!')
 		
 	return X_trj, U_trj, obj_trj, np.mean(solve_times), obj_hist
+
+
+
+"""Nonlinear MPC, centralized"""
+def solve_mpc_single_nonlinear(n_agents, x0, xr, T, Q, R, Qf):
+	n_states = 12
+	n_inputs = 4
+
+	N = n_agents
+	opti = Opti()
+	Y_state = opti.variable((T+1)*n_states + T*n_inputs)
+	u_ref = np.array([0, 0, 0, 0] * N).reshape(-1,1)
+	
+	cost = 0
+	for t in range(T):
+
+		cost += (Y_state[t*n_states:(t+1)*n_states] - xr) *  \
+		Q* (Y_state[t*n_states:(t+1)*n_states]-xr) 
+		
+		cost += (Y_state[t*n_inputs:(t+1)*n_inputs]) *  \
+		R* (Y_state[t*n_inputs:(t+1)*n_inputs])
+
+
+	cost += (Y_state[T*n_states:(T+1)*n_states] - xr) * \
+			Qf * (Y_state[T*n_states:(T+1)*n_states]- xr)
+
+	obj_hist = [np.inf]
+	x_curr = x0
+	u_curr = np.zeros((n_inputs,1))
+ 
+	X_trj = np.zeros((0, n_states))
+	U_trj = np.zeros((0, n_inputs))
+	X_trj = np.r_[X_trj, x0.T]
+	iters = 0
+
+	solve_times = []
+	t = 0
+	dt = 0.1
+	
+	x_dims = [n_states]*N
+	n_dims = [3]*N
+
+	f = generate_f(x_dims)
+	for k in range(T):
+		X_next = Y_state[:(T+1)*n_states][(k+1)*n_states:(k+2)*n_states]
+		X_curr = Y_state[:(T+1)*n_states][k*n_states:(k+1)*n_states]
+		U_curr = Y_state[(T+1)*n_states:][k*n_inputs:(k+1)*n_inputs]
+
+		k1 = f(X_curr,U_curr)
+		k2 = f(X_curr+dt/2*k1, U_curr)
+		k3 = f(X_curr+dt/2*k2, U_curr)
+		k4 = f(X_curr+dt*k3,   U_curr)
+
+		x_update = X_curr + dt/6*(k1+2*k2+2*k3+k4) 
+
+		opti.subject_to(X_next==x_update) # close the gap
+		opti.subject_to(U_curr <= np.array([2, 2, 2, 0.5*4*9.8])) #mass of the drone is 0.5 kg
+		opti.subject_to(np.array([-2, -2, -2, -0.5*4*9.8]) <= U_curr) 
+
+		
+	X0 = opti.parameter(x0.shape[0],1)     
+	opti.subject_to(Y_state[0:n_states] == X0)
+	
+	cost_tot = cost
+	
+	opti.minimize(cost_tot)
+
+	opti.solver("ipopt")
+	opti.set_value(X0,x_curr)
+	
+	t0 = perf_counter()
+	try:
+		sol = opti.solve()
+		iter_time = perf_counter() - t0
+	except RuntimeError:
+		
+		pass
+		
+		
+	solve_times.append(perf_counter() - t0)
+	# obj_hist.append(sol.value(cost_tot))
+	obj_val = sol.value(cost_tot)
+
+	ctrl = sol.value(Y_state)[(T+1)*n_states:].reshape((T, n_inputs))[0]
+	u_curr = ctrl
+	x_curr = sol.value(Y_state)[:(T+1)*n_states].reshape((T+1,n_states))[1]
+
+		
+	return x_curr, u_curr, iter_time, obj_val
