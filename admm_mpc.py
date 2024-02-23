@@ -88,8 +88,6 @@ def solve_admm_mpc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Q
 																						R_i, 
 																						Qf_i,
 																						T, 
-																						nx, 
-																						nu, 
 																						r_min,
 																						N_i, 
 																						ADMM_ITER, 
@@ -552,7 +550,7 @@ def solve_consensus_nonlinear(Ad, Bd,
 def solve_consensus_potential(
 					x_curr,
 					xr, Q, R, Qf, 
-					T, nx, nu, r_min,
+					T, r_min,
 					N, ADMM_ITER, 
 					mpc_iter, 
 					convex_problem, 
@@ -561,6 +559,9 @@ def solve_consensus_potential(
 	n_agents = N
 	n_states = 12
 	n_inputs = 4
+	nx = n_agents * n_states
+	nu = n_agents * n_inputs
+
 	Q = Q[0:n_states,0:n_states]
 	R = R[0:n_inputs,0:n_inputs]
 	Qf = Qf[0:n_states,0:n_states]
@@ -604,6 +605,12 @@ def solve_consensus_potential(
 				states_T = states[T*nx:(T+1)*nx][agent_id*n_states:(agent_id+1)*n_states]
 				state_ref = xr[agent_id*n_states:(agent_id+1)*n_states]
 				cost_i += (states_T[idf] - state_ref[idf]) * Qf[idf,idf] * (states_T[idf] - state_ref[idf])
+			
+			#Local collision avoidance cost along the finite horizon:
+			for t in range(T):
+				distances = util.compute_pairwise_distance_nd_Sym(states[:(T+1)*nx][t*nx:(t+1)*nx][agent_id*n_states:(agent_id+1)*n_states], x_dims, n_dims)
+				for dist in distances:
+					coll_cost += fmin(0,(dist - 3 * r_min))**2 * 200
 		
 			"""Reference: https://www.cvxpy.org/examples/applications/consensus_opt.html"""
 			#Augmented cost :
@@ -639,15 +646,6 @@ def solve_consensus_potential(
 				# for i in range(n_agents):
 				# 	opti.subject_to(X_curr[3:6] <= np.array([1.5, 1.5, 1.5]))
 				# 	opti.subject_to(np.array([-1.5, -1.5, -1.5]) <= X_curr[3:6])
-		
-				# Collision avoidance constraints
-				p_i = states[:(T+1)*nx][(k+1)*nx:(k+2)*nx][agent_id*n_states:(agent_id+1)*n_states][:3]
-				for j in range(n_agents):
-					if j != agent_id:
-						p_j = states[:(T+1)*nx][(k+1)*nx:(k+2)*nx][j*n_states:(j+1)*n_states][:3]
-						p_ij = p_j - p_i
-						opti.subject_to(sqrt(p_ij[0]**2 + p_ij[1]**2 + p_ij[2]**2 + 0.001) >= 2*r_min)
-
 		
 			# ADMM loop
 			iters = 0
