@@ -136,17 +136,22 @@ def random_setup(
     return x0, xf
 
 def setup_n_quads_V2(n_quads,r_safety):
-    
+    n_states = 12
+    #TODO: change the shape of the returned array for 12DOF quad
     x0,v0 = set_random(n_quads,r_safety,False)
-    x_0 = np.zeros((6*n_quads,))
+    x_0 = np.zeros((n_states*n_quads,))
     for agent,(pos,vel) in enumerate(zip(x0,v0)):
-        x_0[agent*6:(agent+1)*6] = np.hstack((pos,vel))
+        x_0[agent*n_states:(agent+1)*n_states][:3] = pos
+        x_0[agent*n_states:(agent+1)*n_states][6:9] = vel
+        
     x_0 = x_0.reshape(-1,1)
     
     xf,vf = set_random(n_quads,r_safety,True)
-    x_f = np.zeros((6*n_quads,))
+    x_f = np.zeros((n_states*n_quads,))
     for agent,(pos_f,vel_f) in enumerate(zip(xf,vf)):
-        x_f[agent*6:(agent+1)*6] = np.hstack((pos_f,vel_f))
+        x_f[agent*n_states:(agent+1)*n_states][:3] = pos_f
+        x_f[agent*n_states:(agent+1)*n_states][6:9] = vel_f
+        
     x_f = x_f.reshape(-1,1)
     return x_0, x_f
 

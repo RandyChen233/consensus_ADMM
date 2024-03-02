@@ -41,7 +41,8 @@ if __name__ == "__main__":
     MPC_ITER = 100
     setup_logger_admm()
         
-    X_full, U_full, obj_trj, mean_time, obj_history = solve_admm_mpc(n_states, 
+    X_full, U_full, obj_trj, mean_time, obj_history = solve_admm_mpc(ids,
+                                                                    n_states, 
                                                                     n_inputs, 
                                                                     n_agents, 
                                                                     x0, 
@@ -52,23 +53,24 @@ if __name__ == "__main__":
                                                                     R, 
                                                                     Qf, 
                                                                     MPC_ITER,
-                                                                    ADMM_ITER, convex = True, n_trial=None)
+                                                                    ADMM_ITER, convex = True, potential_ADMM = False, n_trial=None)
     
     np.savez("admm_consensus_BVC_convex_{}.npz".format(n_agents), X_full=X_full, obj_trj=obj_trj, obj_hist = obj_history, xr=xr, x0 = x0)
     
-    X_full, U_full, obj_trj, mean_time, obj_history = solve_admm_mpc(n_states, 
-                                                                    n_inputs, 
-                                                                    n_agents, 
-                                                                    x0, 
-                                                                    xr, 
-                                                                    T, 
-                                                                    radius, 
-                                                                    Q, 
-                                                                    R, 
-                                                                    Qf, 
-                                                                    MPC_ITER,
-                                                                    ADMM_ITER, convex = False, n_trial=None)
-    np.savez("admm_consensus_BVC_nonconvex_{}.npz".format(n_agents), X_full=X_full, obj_trj=obj_trj, obj_hist = obj_history, xr=xr, x0 = x0)
+    # X_full, U_full, obj_trj, mean_time, obj_history = solve_admm_mpc(ids,
+    #                                                                 n_states, 
+    #                                                                 n_inputs, 
+    #                                                                 n_agents, 
+    #                                                                 x0, 
+    #                                                                 xr, 
+    #                                                                 T, 
+    #                                                                 radius, 
+    #                                                                 Q, 
+    #                                                                 R, 
+    #                                                                 Qf, 
+    #                                                                 MPC_ITER,
+    #                                                                 ADMM_ITER, convex = False, n_trial=None)
+    # np.savez("admm_consensus_BVC_nonconvex_{}.npz".format(n_agents), X_full=X_full, obj_trj=obj_trj, obj_hist = obj_history, xr=xr, x0 = x0)
     
     
     

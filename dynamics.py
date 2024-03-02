@@ -47,12 +47,11 @@ def forward_pass(A, B, horizon, x_curr, u_curr):
 
 """For 12-DOF nonlinear quadrotor dynamics:"""
 
-
 def generate_f(x_dims_local):
-	g = 9.8
+
 	# NOTE: Assume homogeneity of agents.
 	n_agents = len(x_dims_local) #e.g., [12,12,12]
-	n_states = x_dims_local[0] # no. of states
+	n_states = x_dims_local[0] # no. of states for each drone
 	n_controls = 4 #no. of control inputs
 	
 	def f(x, u):

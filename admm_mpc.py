@@ -15,9 +15,17 @@ from multiprocessing import Process, Pipe
 opts = {'error_on_fail':False}
 
 """To keep the code simple, peer-to-peer communication is not used"""
-
-def solve_admm_mpc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Qf, MPC_ITER, ADMM_ITER, convex = True, n_trial=None):
-	SOVA_admm = False
+def solve_admm_mpc(ids, 
+                   n_states, 
+                   n_inputs, 
+                   n_agents, 
+                   x0, 
+                   xr, 
+                   T, 
+                   radius, 
+                   Q, 
+                   R, Qf, MPC_ITER, ADMM_ITER, convex = False, potential_ADMM = True, n_trial=None):
+	
 	nx = n_states*n_agents
 	nu = n_inputs*n_agents
 	
@@ -43,16 +51,18 @@ def solve_admm_mpc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Q
 	u_curr = np.zeros((nu, 1))
 	
 	dt = 0.1
-	# dt = 0.01
-	Ad, Bd = linear_kinodynamics(dt,N)
-	A_i = Ad[0:6,0:6]
-	B_i = Bd[0:6,0:3]
+
 	
 	while not np.all(util.distance_to_goal(x_curr.flatten(), xr.flatten(), n_agents, n_states) < 0.1):
+		X_dec = np.zeros((nx, 1))
+		U_dec = np.zeros((nu, 1))
 		try:
-		
+
 			#Solve current MPC via consensus ADMM:
 			if convex:
+				Ad, Bd = linear_kinodynamics(dt,N)
+				A_i = Ad[0:6,0:6]
+				B_i = Bd[0:6,0:3]
 				state_curr, input_curr,  admm_time, obj_curr= solve_consensus(Ad, Bd,
 															A_i,B_i,
 															x_curr,
@@ -61,18 +71,15 @@ def solve_admm_mpc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Q
 															T, nx, nu,r_min,
 															N, ADMM_ITER, mpc_iter, convex_problem = True,
 															n_trial = n_trial)
-			else:
+			if potential_ADMM:
 				graph = util.define_inter_graph_threshold(x_curr, radius, x_dims, ids, n_dims)
         
 				split_states_initial = split_graph(x_curr.T, x_dims, graph)
 				split_states_final = split_graph(xr.T, x_dims, graph)
 				split_inputs_ref = split_graph(u_ref.reshape(-1, 1).T, u_dims, graph)
-				
-				X_dec = np.zeros((nx, 1))
-				U_dec = np.zeros((nu, 1))
 
 				solve_times_per_problem = []
-				for (x0_i, xf_i, u_ref_i , (prob, ids_) , place_holder) in zip(split_states_initial, 
+				for (x0_i, xf_i, u_ref_i , (i_prob, ids_) , place_holder) in zip(split_states_initial, 
                                        split_states_final,
                                        split_inputs_ref,
                                        graph.items(),
@@ -96,6 +103,11 @@ def solve_admm_mpc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Q
 																						n_trial = n_trial)
 					solve_times_per_problem.append(admm_time)
 
+					print(f'state_curr has shape {state_curr.shape}, input_curr has shape {input_curr.shape}')
+     
+					X_dec[place_holder * n_states : (place_holder + 1) * n_states, :] = state_curr[place_holder * n_states : (place_holder + 1) * n_states]
+					U_dec[place_holder * n_inputs : (place_holder + 1) * n_inputs, :] = input_curr[place_holder * n_inputs : (place_holder + 1) * n_inputs]
+     
 			# 	state_curr, input_curr,  admm_time, obj_curr = solve_consensus_nonlinear(Ad, Bd,
 			# 																	A_i,B_i,
 			# 																	x_curr,
@@ -108,25 +120,23 @@ def solve_admm_mpc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Q
 			# solve_times.append(admm_time)
 				
 				
-			
-			
 		except (EOFError, RuntimeError) as e:
 			admm_time = np.inf
 			solve_times.append(admm_time)
 			print('Error encountered in ADMM iterations !! Exiting...')
 			converged = False
 			obj_trj = np.inf
-			return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
+			return X_full, U_full, np.mean(solve_times), obj_history
 			# break
 			
 		obj_history.append(float(obj_curr))
-	
   
-		x_curr = state_curr
-		u_curr = input_curr
-		
-		X_full = np.r_[X_full, x_curr.reshape(1,-1)]
-		U_full = np.r_[U_full, u_curr.reshape(1,-1)]
+		if potential_ADMM:
+			X_full = np.r_[X_full, X_dec.reshape(1,-1)]
+			U_full = np.r_[U_full, U_dec.reshape(1,-1)]
+		else:
+			X_full = np.r_[X_full, state_curr.reshape(1,-1)]
+			U_full = np.r_[U_full, input_curr.reshape(1,-1)]
 		
 		mpc_iter += 1
 		t += dt
@@ -147,9 +157,8 @@ def solve_admm_mpc(ids, n_states, n_inputs, n_agents, x0, xr, T, radius, Q, R, Q
 	if np.all(util.distance_to_goal(X_full[-1].flatten(), xr.flatten(), n_agents, n_states) <= 0.1):
 		converged = True
 
-	obj_trj = float(util.objective(X_full.T, U_full.T, u_ref, xr, Q, R, Qf))
-	
-	return X_full, U_full, obj_trj, np.mean(solve_times), obj_history
+
+	return X_full, U_full, np.mean(solve_times), obj_history
 
 
 """Consensus based linear-quadratic MPC: """
@@ -217,16 +226,7 @@ def solve_consensus(Ad, Bd,
 			#Constrain the acceleration vector
 			opti.subject_to(U_curr <= np.array([2, 2, 2]))
 			opti.subject_to(np.array([-2, -2, -2]) <= U_curr)
-   
-			#Constraint on the position
-			# opti.subject_to(X_curr[:3] <= np.array([3.5, 3.5, 2.5]))
-			# opti.subject_to(np.array([0, 0, 0]) <= X_curr[:3])
-			
-			# Constrain velocity:
-			# for i in range(n_agents):
-			# 	opti.subject_to(X_curr[3:6] <= np.array([1.5, 1.5, 1.5]))
-			# 	opti.subject_to(np.array([-1.5, -1.5, -1.5]) <= X_curr[3:6])
-		
+
 			i = agent_id
 		
 			# Collision avoidance constraints via BVCs:
@@ -249,15 +249,6 @@ def solve_consensus(Ad, Bd,
 					b_ij = cs.dot(a_ij, (agent_i_trj[:,k][:3] + agent_j_trj[:,k][:3])/2) + r_min/2
 					opti.subject_to(cs.dot(a_ij, p_i_next) >= b_ij )
 
-			# agent_i_prev = x_curr[i*n_states:(i+1)*n_states][:3]
-			# p_i_next = X_curr[:3]
-			# for j in range(n_agents):
-			# 	if j != i:
-			# 		agent_j_prev = x_curr[j*n_states:(j+1)*n_states][:3]
-
-			# 		a_ij  =  (agent_i_prev-agent_j_prev)/cs.norm_2(agent_i_prev -agent_j_prev)
-			# 		b_ij = cs.dot(a_ij, (agent_i_prev + agent_j_prev)/2) + r_min/2
-			# 		opti.subject_to(cs.dot(a_ij, p_i_next) >= b_ij )
 
 		#Terminal input constraint for recursive feasibility:
 		U_f = states[(T+1)*nx:][(T-1)*nu:T*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
@@ -569,7 +560,7 @@ def solve_consensus_potential(
 	n_dims = [3]*n_agents
 
 	#If current neighborhood has only 1 agent, no consensus is needed.
-	if N == 1:
+	if n_agents == 1:
 		state_curr, input_curr, solve_time_i, obj_val_i = solve_mpc_single_nonlinear(n_agents, x_curr, xr, T,  Q, R, Qf)
 		
 		return state_curr, input_curr ,solve_time_i, obj_val_i
@@ -583,7 +574,7 @@ def solve_consensus_potential(
 			states = opti.variable((T+1)*nx + T* nu)
 			u = opti.parameter((T+1)*nx + T*nu)
 			opti.set_value(u, cs.GenDM_zeros((T+1)*nx + T*nu,1))
-			X0 = opti.parameter(x_curr[:n_states].shape[0],1)
+			X0 = opti.parameter(x_curr[:n_states].shape[0], 1)
 			dt = 0.1
 			rho = 0.5
 			cost_i = 0 		#initialize local cost for each agent i
@@ -598,7 +589,7 @@ def solve_consensus_potential(
 				input_curr = states[(T+1)*nx:][t*nu:(t+1)*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
 				for idu in range(n_inputs):
 					cost_i += (input_curr[idu]) * R[idu,idu] * (input_curr[idu])
-					# print(f.is_scalar())
+				
 			
 			#Local quadratic terminal cost:
 			for idf in range(n_states):
@@ -607,11 +598,14 @@ def solve_consensus_potential(
 				cost_i += (states_T[idf] - state_ref[idf]) * Qf[idf,idf] * (states_T[idf] - state_ref[idf])
 			
 			#Local collision avoidance cost along the finite horizon:
-			for t in range(T):
-				distances = util.compute_pairwise_distance_nd_Sym(states[:(T+1)*nx][t*nx:(t+1)*nx][agent_id*n_states:(agent_id+1)*n_states], x_dims, n_dims)
-				for dist in distances:
-					coll_cost += fmin(0,(dist - 3 * r_min))**2 * 200
-		
+			# coll_cost = 0 
+			# for t in range(T):
+			# 	distances = util.compute_pairwise_distance_nd_Sym(states[:(T+1)*nx][t*nx:(t+1)*nx], x_dims, n_dims)
+			# 	for dist in distances:
+			# 		coll_cost += fmin(0,(dist - 2.5 * r_min))**2 * 200
+     
+			# cost_i += coll_cost
+   
 			"""Reference: https://www.cvxpy.org/examples/applications/consensus_opt.html"""
 			#Augmented cost :
 			cost_i += (rho/2)*sumsqr(states - xbar + u) 
@@ -621,37 +615,30 @@ def solve_consensus_potential(
 
 			#Implement Runge Kutta's 4-th oder method for discretization:		
 			f = generate_f(x_dims)
-			for k in range(T):
-				X_next = states[:(T+1)*nx][(k+1)*nx:(k+2)*nx][agent_id*n_states:(agent_id+1)*n_states]
-				X_curr = states[:(T+1)*nx][k*nx:(k+1)*nx][agent_id*n_states:(agent_id+1)*n_states]
-				U_curr = states[(T+1)*nx:][k*nu:(k+1)*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
+			# for k in range(T):
+			# 	X_next = states[:(T+1)*nx][(k+1)*nx:(k+2)*nx]
+			# 	X_curr = states[:(T+1)*nx][k*nx:(k+1)*nx]
+			# 	U_curr = states[(T+1)*nx:][k*nu:(k+1)*nu]
 
-				k1 = f(X_curr,U_curr)
-				k2 = f(X_curr+dt/2*k1, U_curr)
-				k3 = f(X_curr+dt/2*k2, U_curr)
-				k4 = f(X_curr+dt*k3,   U_curr)
+			# 	k1 = f(X_curr,U_curr)
+			# 	k2 = f(X_curr+dt/2*k1, U_curr)
+			# 	k3 = f(X_curr+dt/2*k2, U_curr)
+			# 	k4 = f(X_curr+dt*k3,   U_curr)
 
-				x_update = X_curr + dt/6*(k1+2*k2+2*k3+k4) 
+			# 	x_update = X_curr + dt/6*(k1+2*k2+2*k3+k4) 
 
-				opti.subject_to(X_next==x_update) # close the gap
+			# 	opti.subject_to(X_next==x_update) # close the gap
 				
 				# Constrain the acceleration vector
-				opti.subject_to(U_curr <= np.array([2, 2, 2, 0.5*4*9.8])) #mass of the drone is 0.5 kg
-				opti.subject_to(np.array([-2, -2, -2, -0.5*4*9.8]) <= U_curr) 
-				#Optional spatial constraints:
-				# opti.subject_to(X_next[:3] <= np.array([3.5, 3.5, 2.5]))
-				# opti.subject_to(np.array([0, 0, 0]) <= X_next[:3])
+				# opti.subject_to(U_curr <= np.array([2, 2, 2, 0.5*4*9.8] * n_agents)) #mass of the drone is 0.5 kg
+				# opti.subject_to(np.array([-2, -2, -2, -0.5*4*9.8] * n_agents) <= U_curr) 
 				
-				# #Constrain velocity:
-				# for i in range(n_agents):
-				# 	opti.subject_to(X_curr[3:6] <= np.array([1.5, 1.5, 1.5]))
-				# 	opti.subject_to(np.array([-1.5, -1.5, -1.5]) <= X_curr[3:6])
 		
 			# ADMM loop
 			iters = 0
 			opti.solver("ipopt",opts)
 
-			opti.minimize(f)
+			opti.minimize(cost_i)
 			opti.set_value(X0,x_curr[agent_id*n_states:(agent_id+1)*n_states])
 	
 			while True:
@@ -664,7 +651,7 @@ def solve_consensus_potential(
 					opti.set_value(xbar, pipe.recv()) #receive the averaged result from the main process.
 					opti.set_value(u, sol.value( u + states - xbar))
 					pipe.send(sol.value(states - xbar))
-					pipe.send(sol.value(f-(rho/2)*sumsqr(sol.value(states - xbar + u)))) #this step is not part of the algorithm; used solely for logging data !
+					pipe.send(sol.value(cost_i-(rho/2)*sumsqr(sol.value(states - xbar + u)))) #this step is not part of the algorithm; used solely for logging data !
 					iters += 1
 					
 				except EOFError:
@@ -739,8 +726,6 @@ def solve_consensus_potential(
 
 		state_curr = np.concatenate(state_trj_curr)
 		input_curr = np.concatenate(input_trj_curr)
-	# x_trj_converged = solution_list[-1][:(T+1)*nx].reshape((T+1,nx))
-	# u_trj_converged = solution_list[-1][(T+1)*nx:].reshape((T,nu))
+
 		
- 
 	return state_curr, input_curr,  admm_iter_time, objective_val_list[-1]
