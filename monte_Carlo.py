@@ -23,7 +23,7 @@ if __name__ == "__main__":
     radius = 0.3    
     n_states = 12
     n_inputs = 4
-    setup_logger_admm()
+    # setup_logger_admm()
     n_agents =  [3,6,12,24]
     
     n_trials_iters = range(0,30)

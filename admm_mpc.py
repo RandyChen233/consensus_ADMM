@@ -79,7 +79,7 @@ def solve_admm_mpc(ids,
 				split_inputs_ref = split_graph(u_ref.reshape(-1, 1).T, u_dims, graph)
 
 				solve_times_per_problem = []
-				for (x0_i, xf_i, u_ref_i , (i_prob, ids_) , place_holder) in zip(split_states_initial, 
+				for (x0_i, xf_i, u_ref_i , (prob, ids_) , place_holder) in zip(split_states_initial, 
                                        split_states_final,
                                        split_inputs_ref,
                                        graph.items(),
@@ -103,10 +103,12 @@ def solve_admm_mpc(ids,
 																						n_trial = n_trial)
 					solve_times_per_problem.append(admm_time)
 
-					print(f'state_curr has shape {state_curr.shape}, input_curr has shape {input_curr.shape}')
+					# print(f'state_curr has shape {state_curr.shape}, input_curr has shape {input_curr.shape}')
+					i_prob = ids_.index(prob)
      
-					X_dec[place_holder * n_states : (place_holder + 1) * n_states, :] = state_curr[place_holder * n_states : (place_holder + 1) * n_states]
-					U_dec[place_holder * n_inputs : (place_holder + 1) * n_inputs, :] = input_curr[place_holder * n_inputs : (place_holder + 1) * n_inputs]
+            		#Collecting solutions from different potential game sub-problems at current time step K:
+					X_dec[place_holder * n_states : (place_holder + 1) * n_states, :] = state_curr[i_prob * n_states : (i_prob + 1) * n_states]
+					U_dec[place_holder * n_inputs : (place_holder + 1) * n_inputs, :] = input_curr[i_prob * n_inputs : (i_prob + 1) * n_inputs]
      
 			# 	state_curr, input_curr,  admm_time, obj_curr = solve_consensus_nonlinear(Ad, Bd,
 			# 																	A_i,B_i,
@@ -373,6 +375,7 @@ def solve_consensus_nonlinear(Ad, Bd,
 	Qf = Qf[0:n_states,0:n_states]
 	x_dims = [n_states]*n_agents
 	n_dims = [3]*n_agents
+ 
 	def run_worker(agent_id, pipe, x_curr):
 		opti = Opti()
 		"Reference https://www.cvxpy.org/examples/applications/consensus_opt.html"
@@ -540,9 +543,14 @@ def solve_consensus_nonlinear(Ad, Bd,
 """Consensus based potential game"""
 def solve_consensus_potential(
 					x_curr,
-					xr, Q, R, Qf, 
-					T, r_min,
-					N, ADMM_ITER, 
+					xr, 
+     				Q, 
+         			R, 
+            		Qf, 
+					T, 
+     				r_min,
+					N, 
+     				ADMM_ITER, 
 					mpc_iter, 
 					convex_problem, 
 					n_trial):
@@ -553,9 +561,6 @@ def solve_consensus_potential(
 	nx = n_agents * n_states
 	nu = n_agents * n_inputs
 
-	Q = Q[0:n_states,0:n_states]
-	R = R[0:n_inputs,0:n_inputs]
-	Qf = Qf[0:n_states,0:n_states]
 	x_dims = [n_states]*n_agents
 	n_dims = [3]*n_agents
 
@@ -587,6 +592,7 @@ def solve_consensus_potential(
 					cost_i += (state_curr[idx] - state_ref[idx]) * Q[idx,idx] * (state_curr[idx] - state_ref[idx]) 
 					# print(f.is_scalar())
 				input_curr = states[(T+1)*nx:][t*nu:(t+1)*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
+				
 				for idu in range(n_inputs):
 					cost_i += (input_curr[idu]) * R[idu,idu] * (input_curr[idu])
 				
@@ -613,25 +619,24 @@ def solve_consensus_potential(
 			#Local constraints for current MPC:
 			opti.subject_to(states[0:nx][agent_id*n_states:(agent_id+1)*n_states] == X0)
 
-			#Implement Runge Kutta's 4-th oder method for discretization:		
-			f = generate_f(x_dims)
-			# for k in range(T):
-			# 	X_next = states[:(T+1)*nx][(k+1)*nx:(k+2)*nx]
-			# 	X_curr = states[:(T+1)*nx][k*nx:(k+1)*nx]
-			# 	U_curr = states[(T+1)*nx:][k*nu:(k+1)*nu]
+			#Implement Runge Kutta's 4-th oder method for integration:		
+			for k in range(T):
+				X_next = states[:(T+1)*nx][(k+1)*nx:(k+2)*nx][agent_id*n_states:(agent_id+1)*n_states]
+				X_curr = states[:(T+1)*nx][k*nx:(k+1)*nx][agent_id*n_states:(agent_id+1)*n_states]
+				U_curr = states[(T+1)*nx:][k*nu:(k+1)*nu][agent_id*n_inputs:(agent_id+1)*n_inputs]
+				f = generate_f_12DOF(X_curr, U_curr)
+				k1 = f(X_curr,U_curr)
+				k2 = f(X_curr+dt/2*k1, U_curr)
+				k3 = f(X_curr+dt/2*k2, U_curr)
+				k4 = f(X_curr+dt*k3,   U_curr)
 
-			# 	k1 = f(X_curr,U_curr)
-			# 	k2 = f(X_curr+dt/2*k1, U_curr)
-			# 	k3 = f(X_curr+dt/2*k2, U_curr)
-			# 	k4 = f(X_curr+dt*k3,   U_curr)
+				x_update = X_curr + dt/6*(k1+2*k2+2*k3+k4) 
 
-			# 	x_update = X_curr + dt/6*(k1+2*k2+2*k3+k4) 
-
-			# 	opti.subject_to(X_next==x_update) # close the gap
+				opti.subject_to(X_next==x_update) # close the gap
 				
 				# Constrain the acceleration vector
-				# opti.subject_to(U_curr <= np.array([2, 2, 2, 0.5*4*9.8] * n_agents)) #mass of the drone is 0.5 kg
-				# opti.subject_to(np.array([-2, -2, -2, -0.5*4*9.8] * n_agents) <= U_curr) 
+				opti.subject_to(U_curr <= np.array([2, 2, 2, 2.5*9.8] )) #mass of the drone is 0.5 kg
+				opti.subject_to(np.array([-2, -2, -2, -2.5*9.8]) <= U_curr) 
 				
 		
 			# ADMM loop
@@ -720,7 +725,7 @@ def solve_consensus_potential(
 
 		admm_iter_time = perf_counter() - t0  
 		[p.terminate() for p in procs]
-		# states = opti.variable((T+1)*nx + T* nu)
+
 		state_trj_curr = [x_all[i][:(T+1)*nx].reshape((T+1, nx))[1,i*n_states:(i+1)*n_states] for i in range(N)]
 		input_trj_curr = [x_all[i][(T+1)*nx:].reshape((T, nu))[0,i*n_inputs:(i+1)*n_inputs] for i in range(N)]
 

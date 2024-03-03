@@ -186,14 +186,11 @@ def solve_mpc_single_nonlinear(n_agents, x0, xr, T, Q, R, Qf):
 	t = 0
 	dt = 0.1
 	
-	x_dims = [n_states]*N
-	n_dims = [3]*N
-
-	f = generate_f(x_dims)
 	for k in range(T):
 		X_next = Y_state[:(T+1)*n_states][(k+1)*n_states:(k+2)*n_states]
 		X_curr = Y_state[:(T+1)*n_states][k*n_states:(k+1)*n_states]
 		U_curr = Y_state[(T+1)*n_states:][k*n_inputs:(k+1)*n_inputs]
+		f = generate_f_12DOF(X_curr, U_curr)
 
 		k1 = f(X_curr,U_curr)
 		k2 = f(X_curr+dt/2*k1, U_curr)
@@ -203,8 +200,8 @@ def solve_mpc_single_nonlinear(n_agents, x0, xr, T, Q, R, Qf):
 		x_update = X_curr + dt/6*(k1+2*k2+2*k3+k4) 
 
 		opti.subject_to(X_next==x_update) # close the gap
-		opti.subject_to(U_curr <= np.array([2, 2, 2, 0.5*4*9.8])) #mass of the drone is 0.5 kg
-		opti.subject_to(np.array([-2, -2, -2, -0.5*4*9.8]) <= U_curr) 
+		opti.subject_to(U_curr <= np.array([2, 2, 2, 2.5*9.8])) #mass of the drone is 0.5 kg
+		opti.subject_to(np.array([-2, -2, -2, -2.5*9.8]) <= U_curr) 
 
 		
 	X0 = opti.parameter(x0.shape[0],1)     

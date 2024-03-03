@@ -45,45 +45,61 @@ def forward_pass(A, B, horizon, x_curr, u_curr):
 	return x_rollout   
 
 
-"""For 12-DOF nonlinear quadrotor dynamics:"""
+"""For 12-DOF nonlinear quadrotor dynamics (for single drone):"""
 
-def generate_f(x_dims_local):
+def generate_f_12DOF(x, u):
 
-	# NOTE: Assume homogeneity of agents.
-	n_agents = len(x_dims_local) #e.g., [12,12,12]
-	n_states = x_dims_local[0] # no. of states for each drone
-	n_controls = 4 #no. of control inputs
+	# # NOTE: Assume homogeneity of agents.
+	# n_agents = len(x_dims_local) #e.g., [12,12,12]
+	# n_states = x_dims_local[0] # no. of states for each drone
+	# n_controls = 4 #no. of control inputs
 	
-	def f(x, u):
-		p_x = x[0]
-		p_y = x[1]
-		p_z = x[2]
-		phi = x[3]
-		theta = x[4]
-		psi = x[5]
-		v_x = x[6]
-		v_y = x[7]
-		v_z = x[8]
-		w_x = x[9]
-		w_y = x[10]
-		w_z = x[11]
-		tau_x = u[0]
-		tau_y = u[1]
-		tau_z = u[2]
-		f_z = u[3]
+	# def f(x, u):
+		
+		# x_dot = cs.MX.zeros(x.numel())
 
-		x_dot = cs.MX.zeros(x.numel())
+	# x_dot = cs.MX.zeros(n_states)
 
-		for i_agent in range(n_agents):
-			i_xstart = i_agent * n_states
-			i_ustart = i_agent * n_controls
+	# for i_agent in range(n_agents):
+	# 	i_xstart = i_agent * n_states
+	# 	i_ustart = i_agent * n_controls
 
-			#12-DOF quadrotor model (constant parameters assumed already), see derivation in notebooks/DeriveEOM.ipynb
-			x_dot[i_xstart:i_xstart + n_states] = cs.vertcat(
+	#12-DOF quadrotor model (constant parameters assumed already), see derivation in notebooks/DeriveEOM.ipynb
+	# x_dot[i_xstart:i_xstart + n_states] = cs.vertcat(
+	# 	x[i_xstart + 6: i_xstart + 9],
+	# 	(x[i_xstart + 9] * cs.cos(x[i_xstart+5]) - x[i_xstart + 10]*cs.sin(x[i_xstart+5]))/cs.cos(x[i_xstart+4]),
+	# 	x[i_xstart + 9] * cs.sin(x[i_xstart+5]) + x[i_xstart + 10]*cs.cos(x[i_xstart+5]),
+	# 	-x[i_xstart + 9] * cs.cos(x[i_xstart+5]) * cs.tan(x[i_xstart+4]) + x[i_xstart + 10]*cs.sin(x[i_xstart+5])*cs.tan(x[i_xstart+4]) + x[i_xstart+11], 
+	# 	2*u[i_ustart+3] * cs.sin(x[i_xstart+4]), 
+	# 	-2*u[i_ustart+3] * cs.sin(x[i_xstart+3]) * cs.cos(x[i_xstart+4]), 
+	# 	2*u[i_ustart+3] * cs.cos(x[i_xstart+3]) * cs.cos(x[i_xstart+4]) - 981/100, 
+	# 	10000*u[i_ustart]/23 - 17*x[i_xstart+10] * x[i_xstart+11]/23, 
+	# 	10000*u[i_ustart+1]/23 + 17*x[i_xstart+9] * x[i_xstart+11]/23, 
+	# 	250*u[i_ustart+2],
+	# 	)
+ 
+	p_x = x[0]
+	p_y = x[1]
+	p_z = x[2]
+	phi = x[3]
+	theta = x[4]
+	psi = x[5]
+	v_x = x[6]
+	v_y = x[7]
+	v_z = x[8]
+	w_x = x[9]
+	w_y = x[10]
+	w_z = x[11]
+	tau_x = u[0]
+	tau_y = u[1]
+	tau_z = u[2]
+	f_z = u[3]
+
+	x_dot = cs.vertcat(
 				v_x,
 				v_y,
 				v_z,
-				w_x*cs.cos(psi) - w_y*cs.sin(psi)/cs.cos(theta),
+				(w_x*cs.cos(psi) - w_y*cs.sin(psi))/cs.cos(theta),
 				w_x*cs.sin(psi) + w_y*cs.cos(psi),
 				-w_x*cs.cos(psi)*cs.tan(theta) + w_y*cs.sin(psi)*cs.tan(theta) + w_z, 
 				2*f_z*cs.sin(theta), 
@@ -94,6 +110,29 @@ def generate_f(x_dims_local):
 				250*tau_z,
 				)
 			
-		return x_dot
+	return x_dot
 	
-	return f
+	# return f
+
+
+# """"For simplified 6 DOF quadrotor model"""
+# def generate_f(x_dims_local):
+#     g = 9.8
+#     # NOTE: Assume homogeneity of agents.
+#     n_agents = len(x_dims_local)
+#     n_states = x_dims_local[0]
+#     n_controls = 3
+    
+#     def f(x, u):
+#         x_dot = cs.MX.zeros(x.numel())
+#         for i_agent in range(n_agents):
+#             i_xstart = i_agent * n_states
+#             i_ustart = i_agent * n_controls
+#             x_dot[i_xstart:i_xstart + n_states] = cs.vertcat(
+#                 x[i_xstart + 3: i_xstart + 6],
+#                 g*cs.tan(u[i_ustart]), -g*cs.tan(u[i_ustart+1]), u[i_ustart+2] - g
+#                 )
+            
+#         return x_dot
+    
+#     return f
