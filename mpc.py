@@ -156,23 +156,30 @@ def solve_mpc_single_nonlinear(n_agents, x0, xr, T, Q, R, Qf):
 	n_inputs = 4
 
 	N = n_agents
+	assert N == 1
+ 
 	opti = Opti()
-	Y_state = opti.variable((T+1)*n_states + T*n_inputs)
-	u_ref = np.array([0, 0, 0, 0] * N).reshape(-1,1)
+ 
+	X_state = opti.variable((T+1)*n_states) #Discrete state variable, concatenated along a horizon T+1
+	U_state = opti.variable(T*n_inputs) #Discrete state variable, concatenated along a horizon T
+	u_ref = np.array([0, 0, 0, 0] * N).reshape(-1,1) #Reference input vector
 	
 	cost = 0
+	#Running cost : x^T@Q@x + u^T@R@u
 	for t in range(T):
+		for i in range(Q.shape[0]):
+			cost += (X_state[t*n_states:(t+1)*n_states][i] - xr[i])*  \
+					Q[i,i]*(X_state[t*n_states:(t+1)*n_states][i]-xr[i]) 
+     
+		for j in range(R.shape[0]):
+			cost += U_state[t*n_inputs:(t+1)*n_inputs][j] *  \
+					R[j,j] * U_state[t*n_inputs:(t+1)*n_inputs][j]
 
-		cost += (Y_state[t*n_states:(t+1)*n_states] - xr) *  \
-		Q* (Y_state[t*n_states:(t+1)*n_states]-xr) 
-		
-		cost += (Y_state[t*n_inputs:(t+1)*n_inputs]) *  \
-		R* (Y_state[t*n_inputs:(t+1)*n_inputs])
-
-
-	cost += (Y_state[T*n_states:(T+1)*n_states] - xr) * \
-			Qf * (Y_state[T*n_states:(T+1)*n_states]- xr)
-
+	#Terminal cost:
+	for i in range(Qf.shape[0]):
+		cost += (X_state[T*n_states:(T+1)*n_states][i] - xr[i]) * \
+				Qf[i,i] * (X_state[T*n_states:(T+1)*n_states][i]- xr[i])
+	print(cost.is_scalar())
 	obj_hist = [np.inf]
 	x_curr = x0
 	u_curr = np.zeros((n_inputs,1))
@@ -187,15 +194,15 @@ def solve_mpc_single_nonlinear(n_agents, x0, xr, T, Q, R, Qf):
 	dt = 0.1
 	
 	for k in range(T):
-		X_next = Y_state[:(T+1)*n_states][(k+1)*n_states:(k+2)*n_states]
-		X_curr = Y_state[:(T+1)*n_states][k*n_states:(k+1)*n_states]
-		U_curr = Y_state[(T+1)*n_states:][k*n_inputs:(k+1)*n_inputs]
-		f = generate_f_12DOF(X_curr, U_curr)
+		X_next = X_state[(k+1)*n_states:(k+2)*n_states]
+		X_curr = X_state[k*n_states:(k+1)*n_states]
+		U_curr = U_state[k*n_inputs:(k+1)*n_inputs]
+		# f = generate_f_12DOF(X_curr, U_curr)
 
-		k1 = f(X_curr,U_curr)
-		k2 = f(X_curr+dt/2*k1, U_curr)
-		k3 = f(X_curr+dt/2*k2, U_curr)
-		k4 = f(X_curr+dt*k3,   U_curr)
+		k1 = generate_f_12DOF(X_curr,U_curr)
+		k2 = generate_f_12DOF(X_curr+dt/2*k1, U_curr)
+		k3 = generate_f_12DOF(X_curr+dt/2*k2, U_curr)
+		k4 = generate_f_12DOF(X_curr+dt*k3,   U_curr)
 
 		x_update = X_curr + dt/6*(k1+2*k2+2*k3+k4) 
 
@@ -205,7 +212,7 @@ def solve_mpc_single_nonlinear(n_agents, x0, xr, T, Q, R, Qf):
 
 		
 	X0 = opti.parameter(x0.shape[0],1)     
-	opti.subject_to(Y_state[0:n_states] == X0)
+	opti.subject_to(X_state[0:n_states] == X0)
 	
 	cost_tot = cost
 	
@@ -218,18 +225,18 @@ def solve_mpc_single_nonlinear(n_agents, x0, xr, T, Q, R, Qf):
 	try:
 		sol = opti.solve()
 		iter_time = perf_counter() - t0
+  
 	except RuntimeError:
-		
-		pass
-		
+		print("Runtime error encountered in solver!!! ")
+		return x_curr, u_curr, iter_time, obj_val
+
 		
 	solve_times.append(perf_counter() - t0)
-	# obj_hist.append(sol.value(cost_tot))
+	obj_hist.append(sol.value(cost_tot))
 	obj_val = sol.value(cost_tot)
 
-	ctrl = sol.value(Y_state)[(T+1)*n_states:].reshape((T, n_inputs))[0]
+	ctrl = sol.value(U_state).reshape((T, n_inputs))[0]
 	u_curr = ctrl
-	x_curr = sol.value(Y_state)[:(T+1)*n_states].reshape((T+1,n_states))[1]
-
+	x_curr = sol.value(X_state).reshape((T+1,n_states))[1]
 		
-	return x_curr, u_curr, iter_time, obj_val
+	return x_curr, u_curr, iter_time, obj_val, obj_hist
