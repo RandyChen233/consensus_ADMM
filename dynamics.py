@@ -116,23 +116,50 @@ def generate_f_12DOF(x, u):
 
 
 # """"For simplified 6 DOF quadrotor model"""
-# def generate_f(x_dims_local):
-#     g = 9.8
-#     # NOTE: Assume homogeneity of agents.
-#     n_agents = len(x_dims_local)
-#     n_states = x_dims_local[0]
-#     n_controls = 3
+def generate_f_6DOF_single(x, u):
+	g = 9.8
+	# NOTE: Assume homogeneity of agents.
+	px = x[0]
+	py = x[1]
+	pz = x[2]
+	vx = x[3]
+	vy = x[4]
+	vz = x[5]
+	theta = u[0]
+	phi = u[1]
+	tau = u[2]
+	g = 9.81
+ 
+	x_dot = cs.vertcat(
+		vx,
+		vy,
+		vz,
+		g*cs.tan(theta),
+		-g*cs.tan(phi),
+		tau-g,
+		)
+		
+	return x_dot
+
+
+
+def generate_f(x_dims_local):
+    g = 9.8
+    # NOTE: Assume homogeneity of agents.
+    n_agents = len(x_dims_local)
+    n_states = x_dims_local[0]
+    n_controls = 3
     
-#     def f(x, u):
-#         x_dot = cs.MX.zeros(x.numel())
-#         for i_agent in range(n_agents):
-#             i_xstart = i_agent * n_states
-#             i_ustart = i_agent * n_controls
-#             x_dot[i_xstart:i_xstart + n_states] = cs.vertcat(
-#                 x[i_xstart + 3: i_xstart + 6],
-#                 g*cs.tan(u[i_ustart]), -g*cs.tan(u[i_ustart+1]), u[i_ustart+2] - g
-#                 )
+    def f(x, u):
+        x_dot = cs.MX.zeros(x.numel())
+        for i_agent in range(n_agents):
+            i_xstart = i_agent * n_states
+            i_ustart = i_agent * n_controls
+            x_dot[i_xstart:i_xstart + n_states] = cs.vertcat(
+                x[i_xstart + 3: i_xstart + 6],
+                g*cs.tan(u[i_ustart]), -g*cs.tan(u[i_ustart+1]), u[i_ustart+2] - g
+                )
             
-#         return x_dot
+        return x_dot
     
-#     return f
+    return f

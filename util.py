@@ -137,7 +137,7 @@ def random_setup(
 
 def setup_n_quads_V2(n_quads,r_safety):
     n_states = 12
-    #TODO: change the shape of the returned array for 12DOF quad
+
     x0,v0 = set_random(n_quads,r_safety,False)
     x_0 = np.zeros((n_states*n_quads,))
     for agent,(pos,vel) in enumerate(zip(x0,v0)):
@@ -298,24 +298,6 @@ def setup_n_quads(n, r_safety):
     return x0, xf
 
 
-def objective(X, U, u_ref, xf, Q, R, Qf):
-    total_stage_cost = 0
-    for j in range(X.shape[1] - 1):
-        for i in range(X.shape[0]):
-            total_stage_cost += (X[i, j] - xf[i]) * Q[i, i] * (X[i, j] - xf[i])
-
-    for j in range(U.shape[1]):
-        for i in range(U.shape[0]):
-            total_stage_cost += (U[i, j] - u_ref[i]) * R[i, i] * (U[i, j] - u_ref[i])
-
-    # Quadratic terminal cost:
-    total_terminal_cost = 0
-
-    for i in range(X.shape[0]):
-        total_terminal_cost += (X[i, -1] - xf[i]) * Qf[i, i] * (X[i, -1] - xf[i])
-
-    return total_stage_cost + total_terminal_cost
-
 def distance_to_goal(x,xf,n_agents,n_states):
     n_d = 3 
     return np.linalg.norm((x - xf).reshape(n_agents, n_states)[:, :n_d], axis=1)
@@ -356,31 +338,46 @@ def define_inter_graph_threshold(X, radius, x_dims, ids, n_dims=None):
     for each pair of agents sampled over the trajectory
     """
 
-    planning_radii = 5 * radius
+    planning_radii = 3.0 * radius
     
     if n_dims:
         rel_dists = np.array([compute_pairwise_distance_nd_Sym(X, x_dims, n_dims)])
     else:    
         rel_dists = compute_pairwise_distance(X, x_dims)
-    
-    # print(f'determining interaction graph with the following pair-wise distance : {rel_dists}')
-    # N = X.shape[0]
-    # n_samples = 10
-    # sample_step = max(N // n_samples, 1)
-    # sample_slice = slice(0, N + 1, sample_step)
 
-    # Put each pair of agents within each others' graphs if they are within
-    # some threshold distance from each other.
     graph = {id_: [id_] for id_ in ids}
     # print(graph)
     pair_inds = np.array(list(itertools.combinations(ids, 2)))
-    for i, pair in enumerate(pair_inds):
-        if np.any(rel_dists[:,i] < planning_radii):
-            graph[pair[0]].append(pair[1])
-            graph[pair[1]].append(pair[0])
 
-    graph = {agent_id: sorted(prob_ids) for agent_id, prob_ids in graph.items()}
+    distances_dict = {}  # Store distances for all pairs
+    # Populate initial connections based on distance
+    for i, pair in enumerate(pair_inds):
+        # Convert pair to a tuple to use as a dictionary key
+        pair_tuple = tuple(pair)
+        if np.any(rel_dists[:, i] < planning_radii):
+            graph[pair_tuple[0]].append(pair_tuple[1])
+            graph[pair_tuple[1]].append(pair_tuple[0])
+        distances_dict[pair_tuple] = rel_dists[:, i]
+
+    # Ensure the graph is always connected
+    for id_ in ids:
+        if len(graph[id_]) == 1:  # If an agent has no neighbors
+            # Find the nearest neighbor by checking all distances
+            nearest_distance = float('inf')
+            nearest_neighbor_id = None
+            for (agent1, agent2), distance in distances_dict.items():
+                if agent1 == id_ or agent2 == id_:
+                    if distance < nearest_distance:
+                        nearest_distance = distance
+                        nearest_neighbor_id = agent2 if agent1 == id_ else agent1
+            if nearest_neighbor_id is not None:
+                graph[id_].append(nearest_neighbor_id)
+                graph[nearest_neighbor_id].append(id_)
+            
+    # graph = {agent_id: sorted(prob_ids) for agent_id, prob_ids in graph.items()}
+    graph = {agent_id: sorted(set(prob_ids)) for agent_id, prob_ids in graph.items()}  # Remove potential duplicates and sort
     return graph
+
 
 def compute_pairwise_distance_nd_Sym(X, x_dims, n_dims):
     """Analog to the above whenever some agents only use distance in the x-y plane"""
@@ -423,3 +420,70 @@ def compute_pairwise_distance(X, x_dims, n_d=3):
     return np.linalg.norm(dX, axis=0).T
 
 
+
+def evaluate_cost(X_curr, 
+                U_curr, 
+                n_states, 
+                n_inputs, 
+                n_agents, 
+                r_min, 
+                x_dims, 
+                n_dims, 
+                xr, 
+                u_ref, 
+                Q, 
+                R, 
+                Qf):
+    running_cost = 0
+    coll_cost = 0
+    terminal_cost = 0 
+    u_ref = u_ref.reshape(-1,1)
+    X_curr = X_curr.reshape(-1,1)
+    U_curr = U_curr.reshape(-1,1)
+    # print(X_curr.shape, U_curr.shape, xr.shape, u_ref.shape)
+
+    running_cost += (X_curr-xr).T@ Q @(X_curr-xr)
+    
+    print(X_curr.shape)
+    dists = compute_pairwise_distance_nd_Sym(X_curr,x_dims,n_dims)
+    for dist in dists:
+        coll_cost += fmin(0,(dist - 2 * r_min))**2 * 200
+
+    running_cost += (U_curr-u_ref).T@ R @(U_curr-u_ref)
+    
+    return float(coll_cost + running_cost + terminal_cost)
+
+def evaluate_cost_trajectory(X_full,
+                            U_full,
+                            r_min, 
+                            x_dims, 
+                            n_dims, 
+                            xr, 
+                            u_ref, 
+                            Q, 
+                            R, 
+                            Qf):
+    
+    running_cost = 0
+    coll_cost = 0
+    terminal_cost = 0
+    # print(X_full.shape, U_full.shape)
+    
+    for t in range(X_full.shape[0]-1):
+        running_cost += (X_full[t].reshape(-1,1)-xr).T@Q@(X_full[t].reshape(-1,1)-xr)
+        distances = compute_pairwise_distance_nd_Sym(X_full[t].reshape(-1,1), x_dims, n_dims)
+        for dist in distances:
+            coll_cost += fmin(0,(dist - 2*r_min))**2 * 200
+    
+    for t in range(U_full.shape[0]):
+        running_cost += U_full[t].T@R@U_full[t]
+            
+    terminal_cost = (X_full[-1].reshape(-1,1)-xr).T@Qf@(X_full[-1].reshape(-1,1)-xr)
+    
+    
+    cost_tot = terminal_cost + coll_cost + running_cost
+    # print(cost_tot)
+
+    return float(cost_tot)   
+    
+        
